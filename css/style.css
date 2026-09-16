@@ -199,6 +199,7 @@ body {
 .logo-title {
   background: linear-gradient(90deg, #ffffff 30%, #ff9900 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   font-size: 1.05rem;
   font-weight: 800;
@@ -208,6 +209,7 @@ body {
 [data-theme="light"] .logo-title {
   background: linear-gradient(90deg, #090d16 30%, #ea580c 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
