@@ -1,0 +1,27 @@
+{
+  "name": "ff-sharing-community",
+  "version": "1.0.0",
+  "description": "Free Fire settings and sensitivity sharing community platform",
+  "main": "index.html",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node scripts/dev-server.js",
+    "dev": "node scripts/dev-server.js",
+    "dev:netlify": "npx netlify dev",
+    "test": "node scripts/test-functions.js"
+  },
+  "keywords": [
+    "freefire",
+    "gaming",
+    "sensitivity",
+    "settings",
+    "community",
+    "nrdb",
+    "pwa"
+  ],
+  "author": "FF-SHARING-COMMUNITY",
+  "license": "MIT",
+  "dependencies": {
+    "@nafijrahaman/db": "^1.0.0"
+  }
+}
