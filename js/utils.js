@@ -336,7 +336,7 @@ async function directNrdbFetch(endpoint, options = {}) {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 2000); // reduced to 2s for faster fallback
 
     const res = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
@@ -347,9 +347,10 @@ async function directNrdbFetch(endpoint, options = {}) {
         ...(options.headers || {})
       }
     });
-    clearTimeout(timeoutId);
 
     const json = await res.json().catch(() => ({}));
+    clearTimeout(timeoutId);
+    
     return { ok: res.ok, status: res.status, data: json };
   } catch (e) {
     return { ok: false, status: 0, data: null };
@@ -859,10 +860,10 @@ async function directNrdbApiRouter(endpoint, options = {}) {
 
 // 8. Universal Resilient API Caller (Netlify Serverless + Direct NRDB Hybrid Engine)
 async function apiCall(endpoint, options = {}) {
-  // Try Netlify Functions endpoint first (with 2.5s strict timeout)
+  // Try Netlify Functions endpoint first (with 1.5s strict timeout for fast fallback)
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
     const functionUrl = `/.netlify/functions/${endpoint}`;
     const response = await fetch(functionUrl, {
       headers: {
@@ -872,15 +873,19 @@ async function apiCall(endpoint, options = {}) {
       signal: controller.signal,
       ...options
     });
-    clearTimeout(timeoutId);
 
     // Valid response from Netlify Functions
     if (response.status !== 404 && response.status !== 502) {
-      const data = await response.json();
-      return { ok: response.ok, status: response.status, data };
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        clearTimeout(timeoutId);
+        return { ok: response.ok, status: response.status, data };
+      }
     }
+    clearTimeout(timeoutId);
   } catch (err) {
-    // Timeout or network error - smoothly fallback to direct router
+    // Timeout, network error, or invalid format - smoothly fallback to direct router
   }
 
   // Seamless Direct NRDB REST API Execution
