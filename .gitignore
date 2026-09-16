@@ -1,0 +1,5 @@
+/.env
+/.env.example
+/package.json
+/post.html
+/README.md

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>FF-SHARING-COMMUNITY — Free Fire Settings & Sensitivity Sharing</title>
+  <meta name="description" content="Share and discover the best Free Fire sensitivity and settings from the community. No signup required. Fast, free, and open." />
+  <meta name="keywords" content="Free Fire, FF Sensitivity, Free Fire Settings, Headshot Sensitivity, Free Fire Community, FF Settings Sharing" />
+  
+  <!-- Open Graph / Facebook / Discord -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://ff-sharing.netlify.app/" />
+  <meta property="og:title" content="FF-SHARING-COMMUNITY — Free Fire Settings Sharing" />
+  <meta property="og:description" content="Share your Free Fire settings. Discover better sensitivity from the global community." />
+  <meta property="og:image" content="./assets/icon-512.png" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="FF-SHARING-COMMUNITY — Free Fire Settings Sharing" />
+  <meta name="twitter:description" content="Share your Free Fire settings. Discover better sensitivity." />
+  
+  <!-- PWA & Theme -->
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#07090e" />
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+
+  <!-- Offline Status Banner -->
+  <div id="offlineBanner" class="offline-banner" role="alert">
+    ⚠️ You are offline. Posting and live community data require an internet connection.
+  </div>
+
+  <!-- Site Header -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="index.html" class="logo-brand" aria-label="FF Sharing Community Homepage">
+        <div class="logo-icon">FF</div>
+        <div class="logo-text">
+          <span class="logo-title">FF-SHARING</span>
+          <span class="logo-tag">Community</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <button id="btnInstallPwa" class="btn-install" style="display: none;" aria-label="Install App">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>Install</span>
+        </button>
+
+        <button id="themeToggleBtn" class="icon-btn" aria-label="Toggle Theme">
+          <!-- Populated by JS -->
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="container">
+    
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="hero-badge">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        <span>No Login Required • 100% Free</span>
+      </div>
+      <h1 class="hero-title">FF-SHARING-COMMUNITY</h1>
+      <p class="hero-subtitle">Share your Free Fire settings. Discover better sensitivity from the global community.</p>
+    </section>
+
+    <!-- Post Creator Card -->
+    <section class="creator-card" aria-labelledby="creatorHeading">
+      <div class="creator-header">
+        <h2 id="creatorHeading" class="creator-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-ff)" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          Share Your Settings
+        </h2>
+      </div>
+
+      <!-- Quick Template Presets -->
+      <div class="template-pills">
+        <span style="font-size:0.75rem; color:var(--text-muted); align-self:center; margin-right:4px;">Presets:</span>
+        <button type="button" class="pill-btn" data-template="headshot">🎯 Headshot Pro</button>
+        <button type="button" class="pill-btn" data-template="all100">⚡ 100 Everything</button>
+        <button type="button" class="pill-btn" data-template="sniper">🔭 Sniper God</button>
+        <button type="button" class="pill-btn" data-template="lowend">📱 Smooth 2GB/3GB</button>
+      </div>
+
+      <form id="createPostForm">
+        <div class="form-group">
+          <label for="postUsername" class="input-label">Username</label>
+          <input
+            type="text"
+            id="postUsername"
+            class="input-control"
+            placeholder="Enter your username"
+            maxlength="30"
+            required
+            autocomplete="nickname"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="postSettings" class="input-label">Sensitivity / Settings</label>
+          <textarea
+            id="postSettings"
+            class="input-control"
+            placeholder="Share your Free Fire sensitivity / settings...&#10;e.g.&#10;General: 98&#10;Red Dot: 92&#10;2x Scope: 88&#10;4x Scope: 82&#10;Sniper Scope: 65&#10;Free Look: 70"
+            maxlength="2000"
+            required
+          ></textarea>
+        </div>
+
+        <!-- Optional Image Upload -->
+        <div class="image-upload-wrapper">
+          <label class="input-label">Settings Screenshot (Optional)</label>
+          <div id="imageDropzone" class="image-dropzone" role="button" tabindex="0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+            <span id="dropzoneLabel" class="dropzone-text">Click or drag screenshot here (JPG, PNG, WEBP)</span>
+            <input type="file" id="imageInput" accept="image/jpeg,image/png,image/webp" style="display:none;" />
+          </div>
+
+          <div id="imagePreviewContainer" class="image-preview-container">
+            <img id="imagePreview" class="image-preview-img" alt="Uploaded Settings Preview" />
+            <button type="button" id="btnRemoveImage" class="btn-remove-img" aria-label="Remove Image">✕</button>
+          </div>
+        </div>
+
+        <button type="submit" id="btnSubmitPost" class="btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          <span id="submitBtnText">Share Settings</span>
+        </button>
+      </form>
+    </section>
+
+    <!-- Community Feed Section -->
+    <section class="community-feed" aria-labelledby="feedHeading">
+      <div class="feed-controls">
+
+        <!-- Top Page Category Boxes (Page 1, Page 2... 20 posts per box) -->
+        <div id="topPaginationWrapper" class="top-pagination-wrapper">
+          <div class="pagination-label-row">
+            <span class="pagination-category-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              Pages (20 / page):
+            </span>
+            <span id="pageRangeIndicator" class="page-range-indicator">Page 1</span>
+          </div>
+          <div id="paginationBoxesTop" class="pagination-boxes-container" role="navigation" aria-label="Page selection">
+            <!-- Dynamically populated with [ 1 ], [ 2 ], [ 3 ]... by JS -->
+          </div>
+        </div>
+
+        <div class="search-box-wrapper">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input
+            type="search"
+            id="searchInput"
+            class="search-input"
+            placeholder="Search username, keywords, sensitivity... (e.g. 'HeadshotKing', 'red dot', '98')"
+            autocomplete="off"
+            aria-label="Search posts and usernames"
+          />
+          <button id="searchClearBtn" class="search-clear-btn" aria-label="Clear Search" style="display: none;">✕</button>
+        </div>
+
+        <!-- Quick Search Suggestion Pills -->
+        <div class="search-tags-row">
+          <span class="search-tags-label">Quick Search:</span>
+          <button type="button" class="search-tag-pill" data-search="Headshot">🎯 Headshot</button>
+          <button type="button" class="search-tag-pill" data-search="100">⚡ 100 Sens</button>
+          <button type="button" class="search-tag-pill" data-search="Sniper">🔭 Sniper</button>
+          <button type="button" class="search-tag-pill" data-search="DPI">⚙️ DPI</button>
+          <button type="button" class="search-tag-pill" data-search="Smooth">📱 Smooth</button>
+        </div>
+
+        <!-- Matched User Profile Results Preview (Appears when username match found during search) -->
+        <div id="userSearchResults" class="user-search-results-container" style="display: none;" aria-live="polite">
+          <!-- Populated dynamically by JS with user preview cards and 'See User' button -->
+        </div>
+
+        <!-- Active Social Media Creator Profile Banner (Appears when a user profile is selected / viewed) -->
+        <div id="activeUserProfileBanner" class="active-profile-banner" style="display: none;" role="region" aria-label="Creator Profile">
+          <!-- Populated dynamically by JS -->
+        </div>
+
+        <div class="feed-header">
+          <div class="feed-header-left">
+            <h2 id="feedHeading" class="feed-heading">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-ice)" stroke-width="2.5"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle></svg>
+              <span id="feedTitleText">Community Settings Feed</span>
+            </h2>
+            <div id="activeFilterBadge" class="active-filter-badge" style="display: none;">
+              <span id="filterBadgeText">Filtered</span>
+              <button type="button" id="btnClearActiveFilter" class="btn-clear-badge" title="Clear filter" aria-label="Clear active filter">✕</button>
+            </div>
+          </div>
+          <span id="postCountBadge" class="feed-count">Loading...</span>
+        </div>
+      </div>
+
+      <!-- Feed Container -->
+      <div id="postsFeed" class="posts-grid" role="feed" aria-busy="true">
+        <!-- Posts rendered dynamically -->
+      </div>
+
+      <!-- Loading State -->
+      <div id="feedLoading" class="loading-container" style="display: none;">
+        <div class="spinner"></div>
+        <span>Loading settings...</span>
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="empty-state" style="display: none;">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><path d="M3 9h18"></path><path d="M9 21V9"></path></svg>
+        <h3 id="emptyTitle" class="empty-title">No settings shared yet</h3>
+        <p id="emptyDesc" class="empty-desc">Be the first to share your Free Fire settings with the community!</p>
+      </div>
+
+      <!-- Load More Button -->
+      <button type="button" id="btnLoadMore" class="btn-load-more" style="display: none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px;"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+        <span>Load More Settings (+20)</span>
+      </button>
+    </section>
+
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p><strong>FF-SHARING-COMMUNITY</strong> — Built for the Free Fire gaming community.</p>
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="#createPostForm">Share Settings</a>
+        <a href="admin.html">Admin</a>
+      </div>
+      <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+        Database powered by <a href="https://db.nafij.me" target="_blank" rel="noopener" style="color:var(--accent-ice); text-decoration:underline;">NafijRahaman DB</a>
+      </p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="./js/config.js"></script>
+  <script src="./js/utils.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
