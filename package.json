@@ -4,11 +4,14 @@
   "description": "Free Fire settings and sensitivity sharing community platform",
   "main": "index.html",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "start": "node scripts/dev-server.js",
-    "dev": "node scripts/dev-server.js",
+    "start": "NODE_ENV=production node scripts/dev-server.js",
+    "dev": "NODE_ENV=development node scripts/dev-server.js",
     "dev:netlify": "npx netlify dev",
-    "test": "node scripts/test-functions.js"
+    "test": "node --trace-deprecation scripts/dev-server.js"
   },
   "keywords": [
     "freefire",
@@ -16,13 +19,12 @@
     "sensitivity",
     "settings",
     "community",
-    "nrdb",
+    "mongodb",
     "pwa"
   ],
   "author": "FF-SHARING-COMMUNITY",
   "license": "MIT",
   "dependencies": {
-    "@nafijrahaman/db": "^1.0.0",
-    "mongodb": "^7.6.0"
+    "mongodb": "^6.13.1"
   }
 }
