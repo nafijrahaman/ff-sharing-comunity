@@ -2071,3 +2071,81 @@ textarea.input-control {
   to { transform: rotate(360deg); }
 }
 
+/* ─── Feed spinner wrapper ───────────────────────────────────────────── */
+.feed-spinner-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 20px;
+  width: 100%;
+}
+
+.feed-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3.5px solid rgba(255, 119, 0, 0.18);
+  border-top-color: var(--accent-ff, #ff7700);
+  border-right-color: var(--accent-ice, #00e5ff);
+  border-radius: 50%;
+  animation: spinLoader 0.7s linear infinite;
+}
+
+.feed-spinner-text {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* ─── Inline load-more dots indicator ──────────────────────────────── */
+.load-more-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0 28px;
+  width: 100%;
+}
+
+.load-more-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.load-more-dots span {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-ff, #ff7700);
+  border-radius: 50%;
+  opacity: 0.4;
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+.load-more-dots span:nth-child(1) { animation-delay: 0s; }
+.load-more-dots span:nth-child(2) { animation-delay: 0.2s; }
+.load-more-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotPulse {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.15); }
+}
+
+/* ─── Retry button in error state ───────────────────────────────────── */
+.btn-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 9px 22px;
+  background: var(--accent-ff, #ff7700);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.btn-retry:hover { opacity: 0.88; transform: translateY(-1px); }
+.btn-retry:active { transform: translateY(0); }

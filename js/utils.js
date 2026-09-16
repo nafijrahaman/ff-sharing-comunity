@@ -911,68 +911,223 @@ async function directNrdbApiRouter(endpoint, options = {}) {
 }
 
 // 8. Universal Resilient API Caller
-// Routes: Netlify → /.netlify/functions/, Vercel/Other → /api/, fallback → direct NRDB
+// Priority:
+//   1. Netlify functions (netlify.app or port 8888)
+//   2. Vercel /api/ functions (vercel.app, custom domain, or any server with /api/)
+//   3. Direct NRDB client-side fallback (localStorage cache + seed posts)
+//
+// KEY FIX: Previously the fallback took 20s to timeout on db.nafij.me.
+// Now /api/ is always tried first; directNrdbApiRouter is a fast in-memory fallback.
 async function apiCall(endpoint, options = {}) {
   const host = window.location.hostname;
   const port = window.location.port;
-
-  // Extract the base route name (e.g. "get-posts?page=1" → "get-posts")
   const [routeName, queryString] = endpoint.split('?');
+  const qsPart = queryString ? '?' + queryString : '';
 
-  // ── Netlify (netlify.app domain or local netlify dev port 8888) ──
-  const isNetlifyHost = host.endsWith('netlify.app') || port === '8888';
-  if (isNetlifyHost) {
+  // ── 1. Netlify functions ──────────────────────────────────────────────────
+  const isNetlify = host.endsWith('netlify.app') || port === '8888';
+  if (isNetlify) {
     try {
       const url = `/.netlify/functions/${endpoint}`;
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 15000);
-      const response = await fetch(url, {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 10000);
+      const res = await fetch(url, {
         headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-        signal: controller.signal,
+        signal: ctrl.signal,
         ...options
       });
       clearTimeout(tid);
-      if (response.status !== 404 && response.status !== 502) {
-        const ct = response.headers.get('content-type');
-        if (ct && ct.includes('application/json')) {
-          const data = await response.json();
-          return { ok: response.ok, status: response.status, data };
+      if (res.status !== 404 && res.status !== 502) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          return { ok: res.ok, status: res.status, data: await res.json() };
         }
       }
     } catch (err) {
-      console.warn('Netlify function error, falling through:', err.message);
+      console.warn('[api] Netlify function failed:', err.message);
     }
   }
 
-  // ── Vercel (vercel.app domain, custom domain, or localhost port 3000) ──
-  const isVercelOrServer = host.endsWith('vercel.app') || port === '3000' || (!isNetlifyHost && host !== 'localhost' && port !== '8888') || (host === 'localhost' && port === '3000');
-  if (isVercelOrServer || (!isNetlifyHost && host !== '')) {
-    // Build the /api/ URL properly, preserving query string
-    const apiUrl = `/api/${routeName}${queryString ? '?' + queryString : ''}`;
+  // ── 2. Vercel /api/ (or any server — localhost, custom domain, vercel.app) ─
+  // Skip only for file:// protocol (local HTML files without a server)
+  const isFileProtocol = window.location.protocol === 'file:';
+  if (!isNetlify && !isFileProtocol) {
+    const apiUrl = `/api/${routeName}${qsPart}`;
     try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 15000);
-      const response = await fetch(apiUrl, {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 10000);
+      const res = await fetch(apiUrl, {
         headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-        signal: controller.signal,
+        signal: ctrl.signal,
         ...options
       });
       clearTimeout(tid);
-      if (response.status !== 404 && response.status !== 502) {
-        const ct = response.headers.get('content-type');
-        if (ct && ct.includes('application/json')) {
-          const data = await response.json();
-          return { ok: response.ok, status: response.status, data };
+
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        const data = await res.json();
+        if (res.ok || data.success === false) {
+          // Return even error responses so caller can handle them
+          return { ok: res.ok, status: res.status, data };
         }
       }
-      // If /api/ returned 404 or 502, fall through to direct client
+
+      // 404/502 means /api/ route not deployed — fall through
+      if (res.status === 404 || res.status === 502) {
+        console.warn('[api] /api/' + routeName + ' not found (' + res.status + '), falling back to direct client');
+      }
     } catch (err) {
-      console.warn('Vercel /api/ function error, falling through to direct client:', err.message);
+      if (err.name === 'AbortError') {
+        console.warn('[api] /api/' + routeName + ' timed out after 10s, using local fallback');
+      } else {
+        console.warn('[api] /api/' + routeName + ' network error:', err.message);
+      }
     }
   }
 
-  // ── Fallback: Direct client-side NRDB router (works offline + any host) ──
-  return await directNrdbApiRouter(endpoint, options);
+  // ── 3. Direct client-side fallback (localStorage cache + seed data) ────────
+  // Fast: runs entirely in-browser. No network call to old NRDB.
+  // For get-posts: returns cached posts or seed posts immediately.
+  console.debug('[api] using directNrdbApiRouter fallback for:', routeName);
+  return await directNrdbFastFallback(endpoint, options);
+}
+
+// Fast in-browser fallback — uses localStorage cache, avoids slow network calls
+async function directNrdbFastFallback(endpoint, options = {}) {
+  const [route, queryString] = endpoint.split('?');
+  const params = new URLSearchParams(queryString || '');
+  const method = (options.method || 'GET').toUpperCase();
+
+  // GET POSTS — return from localStorage or seed posts (instant, no network)
+  if (route === 'get-posts' && method === 'GET') {
+    const page = Math.max(1, parseInt(params.get('page'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(params.get('limit'), 10) || 20));
+    const search = (params.get('q') || params.get('search') || '').trim();
+    const username = (params.get('user') || params.get('username') || '').trim();
+
+    let allPosts = [];
+    try {
+      const cached = localStorage.getItem('ff_posts_cache');
+      if (cached) allPosts = JSON.parse(cached) || [];
+    } catch (_) {}
+
+    if (!Array.isArray(allPosts) || allPosts.length === 0) {
+      allPosts = DEFAULT_SEED_POSTS.map((p, i) => ({ ...p, id: p.id || (i + 1) }));
+    }
+
+    if (username) allPosts = allPosts.filter(p => (p.username || '').toLowerCase() === username.toLowerCase());
+    if (search) {
+      const term = search.toLowerCase();
+      if (term.startsWith('#')) {
+        const id = parseInt(term.slice(1), 10);
+        if (!isNaN(id)) allPosts = allPosts.filter(p => Number(p.id) === id || Number(p.postId) === id);
+      } else {
+        allPosts = allPosts.filter(p =>
+          (p.username || '').toLowerCase().includes(term) ||
+          (p.title || '').toLowerCase().includes(term) ||
+          (p.settings || '').toLowerCase().includes(term)
+        );
+      }
+    }
+
+    allPosts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0) || (Number(b.id) - Number(a.id)));
+
+    const total = allPosts.length;
+    const startIdx = (page - 1) * limit;
+    const paginated = allPosts.slice(startIdx, startIdx + limit);
+
+    return {
+      ok: true, status: 200,
+      data: {
+        success: true,
+        posts: paginated.map(p => ({
+          id: Number(p.postId || p.id), _docId: p._docId || String(p.id),
+          username: p.username || 'Anonymous', title: p.title || '',
+          settings: p.settings || '', image: p.image || '',
+          likes: Number(p.likes) || 0, createdAt: p.createdAt || new Date().toISOString()
+        })),
+        total, page, limit, hasMore: (startIdx + limit) < total,
+        matchedUsers: [], userProfile: null
+      }
+    };
+  }
+
+  // CREATE POST — save to localStorage only (fallback mode)
+  if (route === 'create-post' && method === 'POST') {
+    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
+    const username = (body.username || '').trim();
+    const settings = (body.settings || '').trim();
+    if (!username) return { ok: false, status: 400, data: { success: false, message: 'Username required' } };
+    if (!settings) return { ok: false, status: 400, data: { success: false, message: 'Settings required' } };
+
+    let cached = [];
+    try { cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]'); } catch (_) {}
+    const maxId = cached.reduce((m, p) => Math.max(m, Number(p.postId || p.id) || 0), 0);
+    const nextId = maxId + 1;
+    const newPost = {
+      postId: nextId, id: nextId, username, title: body.title || '',
+      settings, image: body.image || '', likes: 0, likedBy: [],
+      createdAt: new Date().toISOString(), _docId: `local_${Date.now()}`
+    };
+    cached.unshift(newPost);
+    try { localStorage.setItem('ff_posts_cache', JSON.stringify(cached)); } catch (_) {}
+
+    return { ok: true, status: 201, data: { success: true, message: 'Settings shared (offline mode)!', post: newPost } };
+  }
+
+  // LIKE POST — update localStorage only
+  if (route === 'like-post' && method === 'POST') {
+    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
+    const postId = Number(body.postId);
+    let cached = [];
+    try { cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]'); } catch (_) {}
+    const target = cached.find(p => Number(p.postId || p.id) === postId);
+    if (target) {
+      target.likes = (Number(target.likes) || 0) + 1;
+      try { localStorage.setItem('ff_posts_cache', JSON.stringify(cached)); } catch (_) {}
+      return { ok: true, status: 200, data: { success: true, likes: target.likes, alreadyLiked: false } };
+    }
+    return { ok: false, status: 404, data: { success: false, message: 'Post not found' } };
+  }
+
+  // ADMIN LOGIN
+  if (route === 'admin-login' && method === 'POST') {
+    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
+    const pw = window.APP_CONFIG?.ADMIN_PASSWORD || 'nafijthepro';
+    if (body.password === pw) {
+      return { ok: true, status: 200, data: { success: true, token: 'admin_' + Date.now(), message: 'Authenticated' } };
+    }
+    return { ok: false, status: 401, data: { success: false, message: 'Invalid credentials' } };
+  }
+
+  // ADMIN DELETE ops — local cache only
+  if (route === 'admin-delete-post' && method === 'POST') {
+    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
+    const postId = Number(body.postId);
+    let cached = [];
+    try { cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]'); } catch (_) {}
+    const updated = cached.filter(p => Number(p.postId || p.id) !== postId);
+    try { localStorage.setItem('ff_posts_cache', JSON.stringify(updated)); } catch (_) {}
+    return { ok: true, status: 200, data: { success: true, message: `Post #${postId} removed from local cache` } };
+  }
+
+  if (route === 'admin-delete-user' && method === 'POST') {
+    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
+    const targetUser = (body.username || '').toLowerCase();
+    let cached = [];
+    try { cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]'); } catch (_) {}
+    const updated = cached.filter(p => (p.username || '').toLowerCase() !== targetUser);
+    const count = cached.length - updated.length;
+    try { localStorage.setItem('ff_posts_cache', JSON.stringify(updated)); } catch (_) {}
+    return { ok: true, status: 200, data: { success: true, deletedCount: count, message: `Removed ${count} local posts` } };
+  }
+
+  if (route === 'admin-delete-all' && method === 'POST') {
+    try { localStorage.removeItem('ff_posts_cache'); } catch (_) {}
+    return { ok: true, status: 200, data: { success: true, message: 'Local cache cleared' } };
+  }
+
+  return { ok: false, status: 404, data: { success: false, message: 'Endpoint not found in fallback' } };
 }
 
 // 9. Check Online / Offline status
