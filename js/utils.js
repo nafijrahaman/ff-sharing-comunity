@@ -381,19 +381,28 @@ async function directNrdbApiRouter(endpoint, options = {}) {
         console.warn('Direct NRDB fetch failed, falling back to local cached store:', e.message);
       }
 
-      // Check local cache if network returned empty
-      if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
+      // Check local cache
+      let cachedPosts = [];
+      try {
         const cached = localStorage.getItem('ff_posts_cache');
-        if (cached) {
-          try {
-            rawPosts = JSON.parse(cached);
-          } catch (e) {}
-        }
-      }
+        if (cached) cachedPosts = JSON.parse(cached);
+      } catch (e) {}
 
-      // If still empty, use rich seed posts
+      // If network is completely empty, fallback
       if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
-        rawPosts = [...DEFAULT_SEED_POSTS];
+        if (cachedPosts.length > 0) {
+          rawPosts = cachedPosts;
+        } else {
+          rawPosts = [...DEFAULT_SEED_POSTS];
+        }
+      } else {
+        // Optimistic Merge: Add any posts from local cache that are missing from the network
+        // (This prevents posts from disappearing on refresh if the server hasn't saved them yet)
+        const networkIds = new Set(rawPosts.map(p => Number(p.postId || p.id)));
+        const recentLocalPosts = cachedPosts.filter(p => !networkIds.has(Number(p.postId || p.id)) && p.username);
+        if (recentLocalPosts.length > 0) {
+          rawPosts = [...recentLocalPosts, ...rawPosts];
+        }
       }
 
       // Standardize post objects
@@ -590,32 +599,15 @@ async function directNrdbApiRouter(endpoint, options = {}) {
       if (!username) return { ok: false, status: 400, data: { success: false, message: 'Username is required.' } };
       if (!settings) return { ok: false, status: 400, data: { success: false, message: 'Settings text is required.' } };
 
-      // Determine next sequential ID from Quick Storage or highest post ID
-      let nextId = 1;
+      // Instantaneous ID generation based on local cache or timestamp
+      let nextId = Date.now();
+      let cached = [];
       try {
-        const seqRes = await directNrdbFetch('/quick/ff_post_sequence');
-        if (seqRes.ok && seqRes.data && typeof seqRes.data.data?.value === 'number') {
-          nextId = seqRes.data.data.value + 1;
-        } else if (seqRes.ok && seqRes.data && typeof seqRes.data.value === 'number') {
-          nextId = seqRes.data.value + 1;
-        } else {
-          const nrdbRes = await directNrdbFetch('/data/posts?limit=200');
-          const rawPosts = nrdbRes?.data?.data || nrdbRes?.data?.items || [];
-          const maxId = (Array.isArray(rawPosts) ? rawPosts : []).reduce((max, p) => {
-            return Math.max(max, Number(p.postId || p.id) || 0);
-          }, 0);
+        cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
+        if (cached.length > 0) {
+          const maxId = cached.reduce((max, p) => Math.max(max, Number(p.postId || p.id) || 0), 0);
           nextId = maxId + 1;
         }
-      } catch (e) {
-        nextId = Date.now();
-      }
-
-      // Update sequence in Quick Storage
-      try {
-        await directNrdbFetch('/quick/ff_post_sequence', {
-          method: 'PUT',
-          body: JSON.stringify({ value: nextId })
-        });
       } catch (e) {}
 
       const newPostDoc = {
@@ -629,26 +621,27 @@ async function directNrdbApiRouter(endpoint, options = {}) {
         createdAt: new Date().toISOString()
       };
 
-      // Save to NRDB without explicit 'id' so NRDB assigns native 'doc_...' ID
-      let savedDocId = `doc_${Date.now()}`;
+      // Instantly update local cache
       try {
-        const saveRes = await directNrdbFetch('/data/posts', {
-          method: 'POST',
-          body: JSON.stringify(newPostDoc)
-        });
-        if (saveRes.ok && saveRes.data) {
-          savedDocId = saveRes.data.data?.id || saveRes.data.id || savedDocId;
-        }
-      } catch (e) {
-        console.warn('Direct NRDB insert warning:', e.message);
-      }
-
-      // Update local storage cache
-      try {
-        const cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
-        cached.unshift({ ...newPostDoc, id: nextId, _docId: savedDocId });
+        cached.unshift({ ...newPostDoc, id: nextId, _docId: `doc_${nextId}` });
         localStorage.setItem('ff_posts_cache', JSON.stringify(cached));
       } catch (e) {}
+
+      // Fire-and-forget network sync (Background processing for zero latency)
+      (async () => {
+        try {
+          await directNrdbFetch('/quick/ff_post_sequence', {
+            method: 'PUT',
+            body: JSON.stringify({ value: nextId })
+          });
+          await directNrdbFetch('/data/posts', {
+            method: 'POST',
+            body: JSON.stringify(newPostDoc)
+          });
+        } catch (err) {
+          console.warn('Background sync warning:', err);
+        }
+      })();
 
       return {
         ok: true,
