@@ -910,40 +910,68 @@ async function directNrdbApiRouter(endpoint, options = {}) {
   }
 }
 
-// 8. Universal Resilient API Caller (Netlify Serverless + Direct NRDB Hybrid Engine)
+// 8. Universal Resilient API Caller
+// Routes: Netlify → /.netlify/functions/, Vercel/Other → /api/, fallback → direct NRDB
 async function apiCall(endpoint, options = {}) {
-  // Check if we are running in an active Netlify deployment or netlify dev proxy (port 8888)
-  const isNetlifyHost = window.location.hostname.endsWith('netlify.app') || window.location.port === '8888';
+  const host = window.location.hostname;
+  const port = window.location.port;
 
+  // Extract the base route name (e.g. "get-posts?page=1" → "get-posts")
+  const [routeName, queryString] = endpoint.split('?');
+
+  // ── Netlify (netlify.app domain or local netlify dev port 8888) ──
+  const isNetlifyHost = host.endsWith('netlify.app') || port === '8888';
   if (isNetlifyHost) {
-    const functionUrl = `/.netlify/functions/${endpoint}`;
     try {
+      const url = `/.netlify/functions/${endpoint}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      const response = await fetch(functionUrl, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(options.headers || {})
-        },
+      const tid = setTimeout(() => controller.abort(), 15000);
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
         signal: controller.signal,
         ...options
       });
-      clearTimeout(timeoutId);
-
-      // Valid response from Netlify Functions
+      clearTimeout(tid);
       if (response.status !== 404 && response.status !== 502) {
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
+        const ct = response.headers.get('content-type');
+        if (ct && ct.includes('application/json')) {
           const data = await response.json();
           return { ok: response.ok, status: response.status, data };
         }
       }
     } catch (err) {
-      console.warn('Netlify function unavailable, seamlessly routing to Direct NRDB client:', err.message);
+      console.warn('Netlify function error, falling through:', err.message);
     }
   }
 
-  // Seamless Direct NRDB REST API Execution (runs on Vercel, localhost, GitHub Pages, etc.)
+  // ── Vercel (vercel.app domain, custom domain, or localhost port 3000) ──
+  const isVercelOrServer = host.endsWith('vercel.app') || port === '3000' || (!isNetlifyHost && host !== 'localhost' && port !== '8888') || (host === 'localhost' && port === '3000');
+  if (isVercelOrServer || (!isNetlifyHost && host !== '')) {
+    // Build the /api/ URL properly, preserving query string
+    const apiUrl = `/api/${routeName}${queryString ? '?' + queryString : ''}`;
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 15000);
+      const response = await fetch(apiUrl, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        signal: controller.signal,
+        ...options
+      });
+      clearTimeout(tid);
+      if (response.status !== 404 && response.status !== 502) {
+        const ct = response.headers.get('content-type');
+        if (ct && ct.includes('application/json')) {
+          const data = await response.json();
+          return { ok: response.ok, status: response.status, data };
+        }
+      }
+      // If /api/ returned 404 or 502, fall through to direct client
+    } catch (err) {
+      console.warn('Vercel /api/ function error, falling through to direct client:', err.message);
+    }
+  }
+
+  // ── Fallback: Direct client-side NRDB router (works offline + any host) ──
   return await directNrdbApiRouter(endpoint, options);
 }
 

@@ -6,6 +6,17 @@
 
 const NRDB_BASE_URL = 'https://db.nafij.me/api/v1';
 
+const {
+  isMongoConfigured,
+  insertMongoPost,
+  getMongoPostsList,
+  getMongoPostById,
+  likeMongoPostById,
+  deleteMongoPostById,
+  deleteMongoPostsByUsername,
+  deleteMongoAllPosts
+} = require('./_mongo');
+
 // In-memory fallback storage for local development / testing when NRDB_API_KEY is not configured
 const memoryStore = {
   posts: [
@@ -180,6 +191,15 @@ async function getNextPostId() {
  * Note: Never send explicit custom 'id' so NRDB assigns native 'doc_...' system ID
  */
 async function insertPost(postData) {
+  if (isMongoConfigured()) {
+    try {
+      const res = await insertMongoPost(postData);
+      if (res) return res;
+    } catch (err) {
+      console.warn('MongoDB insert failed, falling back to NRDB:', err.message);
+    }
+  }
+
   const apiKey = getApiKey();
   const numericId = Number(postData.postId || postData.id);
 
@@ -217,6 +237,15 @@ async function insertPost(postData) {
  * Get all posts, filter by search query or username, with pagination and user aggregation
  */
 async function getPostsList({ page = 1, limit = 20, search = '', username = '' } = {}) {
+  if (isMongoConfigured()) {
+    try {
+      const mongoRes = await getMongoPostsList({ page, limit, search, username });
+      if (mongoRes) return mongoRes;
+    } catch (err) {
+      console.warn('MongoDB get posts failed, falling back to NRDB:', err.message);
+    }
+  }
+
   const apiKey = getApiKey();
   let allPosts = [];
 
@@ -368,6 +397,15 @@ async function getPostById(postId) {
   const numericId = Number(postId);
   if (!numericId) return null;
 
+  if (isMongoConfigured()) {
+    try {
+      const res = await getMongoPostById(numericId);
+      if (res) return res;
+    } catch (err) {
+      console.warn('MongoDB get single post failed, falling back to NRDB:', err.message);
+    }
+  }
+
   const apiKey = getApiKey();
   if (!apiKey) {
     return memoryStore.posts.find(p => Number(p.postId || p.id) === numericId) || null;
@@ -377,12 +415,15 @@ async function getPostById(postId) {
     const listRes = await nrdbFetch(`/data/posts?limit=200`, { method: 'GET' });
     const items = listRes?.data?.items || listRes?.data || listRes?.items || [];
     if (Array.isArray(items)) {
-      const found = items.find(p => typeof p.id === 'string' && p.id.startsWith('doc_') && Number(p.postId) === numericId);
+      const found = items.find(p => {
+        const pId = Number(p.postId !== undefined && p.postId !== null ? p.postId : p.id);
+        return pId === numericId;
+      });
       if (found) {
         return {
           ...found,
           _docId: found.id,
-          id: Number(found.postId)
+          id: numericId
         };
       }
     }
@@ -400,6 +441,15 @@ async function likePostById(postId, fingerprint) {
   const numericId = Number(postId);
   if (!numericId || !fingerprint) {
     throw new Error('Invalid post ID or client fingerprint');
+  }
+
+  if (isMongoConfigured()) {
+    try {
+      const res = await likeMongoPostById(numericId, fingerprint);
+      if (res) return res;
+    } catch (err) {
+      console.warn('MongoDB like post failed, falling back to NRDB:', err.message);
+    }
   }
 
   const apiKey = getApiKey();
@@ -481,6 +531,15 @@ async function deletePostById(postId) {
   const numericId = Number(postId);
   if (!numericId) return false;
 
+  if (isMongoConfigured()) {
+    try {
+      await deleteMongoPostById(numericId);
+      return true;
+    } catch (err) {
+      console.warn('MongoDB delete post failed, falling back to NRDB:', err.message);
+    }
+  }
+
   memoryStore.posts = memoryStore.posts.filter(p => Number(p.postId || p.id) !== numericId);
 
   const apiKey = getApiKey();
@@ -509,6 +568,14 @@ async function deletePostById(postId) {
 async function deletePostsByUsername(username) {
   if (!username) return 0;
   const targetUser = username.trim().toLowerCase();
+
+  if (isMongoConfigured()) {
+    try {
+      return await deleteMongoPostsByUsername(targetUser);
+    } catch (err) {
+      console.warn('MongoDB delete user posts failed, falling back to NRDB:', err.message);
+    }
+  }
 
   const initialCount = memoryStore.posts.length;
   memoryStore.posts = memoryStore.posts.filter(p => (p.username || '').trim().toLowerCase() !== targetUser);
@@ -544,6 +611,14 @@ async function deletePostsByUsername(username) {
  * Delete all posts (Admin) — Complete Database Purge & Sequence Reset
  */
 async function deleteAllPosts() {
+  if (isMongoConfigured()) {
+    try {
+      return await deleteMongoAllPosts();
+    } catch (err) {
+      console.warn('MongoDB delete all failed, falling back to NRDB:', err.message);
+    }
+  }
+
   const count = memoryStore.posts.length;
   memoryStore.posts = [];
   memoryStore.sequence = 0;

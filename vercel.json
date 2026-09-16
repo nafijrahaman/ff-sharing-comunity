@@ -1,6 +1,14 @@
 {
   "cleanUrls": true,
   "rewrites": [
+    { "source": "/api/get-posts", "destination": "/api/get-posts.js" },
+    { "source": "/api/get-post", "destination": "/api/get-post.js" },
+    { "source": "/api/create-post", "destination": "/api/create-post.js" },
+    { "source": "/api/like-post", "destination": "/api/like-post.js" },
+    { "source": "/api/admin-login", "destination": "/api/admin-login.js" },
+    { "source": "/api/admin-delete-post", "destination": "/api/admin-delete-post.js" },
+    { "source": "/api/admin-delete-user", "destination": "/api/admin-delete-user.js" },
+    { "source": "/api/admin-delete-all", "destination": "/api/admin-delete-all.js" },
     { "source": "/admin", "destination": "/admin.html" },
     { "source": "/post/:id", "destination": "/post.html?id=:id" }
   ]

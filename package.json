@@ -22,6 +22,7 @@
   "author": "FF-SHARING-COMMUNITY",
   "license": "MIT",
   "dependencies": {
-    "@nafijrahaman/db": "^1.0.0"
+    "@nafijrahaman/db": "^1.0.0",
+    "mongodb": "^7.6.0"
   }
 }
