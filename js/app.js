@@ -592,12 +592,15 @@ async function fetchFeedPosts(page = 1, append = false) {
     // Instant SWR (Stale-While-Revalidate) - Render cache immediately
     if (page === 1) {
       try {
-        const cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
-        if (cached && cached.length > 0) {
-          elements.feedLoading.style.display = 'none';
-          elements.emptyState.style.display = 'none';
-          state.posts = cached;
-          renderPostsFeed(cached);
+        const cachedStr = localStorage.getItem('ff_posts_cache');
+        if (cachedStr) {
+          const cached = JSON.parse(cachedStr);
+          if (Array.isArray(cached) && cached.length > 0) {
+            elements.feedLoading.style.display = 'none';
+            elements.emptyState.style.display = 'none';
+            state.posts = cached;
+            renderPostsFeed(cached);
+          }
         }
       } catch (e) {}
     }

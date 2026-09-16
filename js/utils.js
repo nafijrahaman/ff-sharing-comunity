@@ -385,7 +385,10 @@ async function directNrdbApiRouter(endpoint, options = {}) {
       let cachedPosts = [];
       try {
         const cached = localStorage.getItem('ff_posts_cache');
-        if (cached) cachedPosts = JSON.parse(cached);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) cachedPosts = parsed;
+        }
       } catch (e) {}
 
       // If network is completely empty, fallback
@@ -603,7 +606,11 @@ async function directNrdbApiRouter(endpoint, options = {}) {
       let nextId = Date.now();
       let cached = [];
       try {
-        cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
+        const cachedStr = localStorage.getItem('ff_posts_cache');
+        if (cachedStr) {
+          const parsed = JSON.parse(cachedStr);
+          if (Array.isArray(parsed)) cached = parsed;
+        }
         if (cached.length > 0) {
           const maxId = cached.reduce((max, p) => Math.max(max, Number(p.postId || p.id) || 0), 0);
           nextId = maxId + 1;
