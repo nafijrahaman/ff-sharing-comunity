@@ -59,10 +59,18 @@ Graphics: Smooth
 High FPS: High (FPS Boost)`
 };
 
+const PRESET_TITLES = {
+  headshot: '🎯 One-Tap Headshot Pro Sensitivity',
+  all100: '⚡ 100 Everything Max Sensitivity',
+  sniper: '🔭 Fast Drag Sniper God Settings',
+  lowend: '📱 Smooth 2GB/3GB FPS Boost Settings'
+};
+
 // DOM Elements
 const elements = {
   postForm: document.getElementById('createPostForm'),
   usernameInput: document.getElementById('postUsername'),
+  titleInput: document.getElementById('postTitle'),
   settingsInput: document.getElementById('postSettings'),
   imageInput: document.getElementById('imageInput'),
   imageDropzone: document.getElementById('imageDropzone'),
@@ -132,6 +140,9 @@ function initPresetButtons() {
       const templateKey = btn.dataset.template;
       if (PRESET_TEMPLATES[templateKey]) {
         elements.settingsInput.value = PRESET_TEMPLATES[templateKey];
+        if (elements.titleInput && (!elements.titleInput.value.trim() || Object.values(PRESET_TITLES).includes(elements.titleInput.value.trim()))) {
+          elements.titleInput.value = PRESET_TITLES[templateKey] || '';
+        }
         elements.settingsInput.focus();
         showToast('Template preset loaded!', 'info', 1500);
       }
@@ -216,6 +227,7 @@ function initFormSubmission() {
     if (state.isSubmitting) return;
 
     const username = elements.usernameInput.value.trim();
+    const title = elements.titleInput ? elements.titleInput.value.trim() : '';
     const settings = elements.settingsInput.value.trim();
 
     if (!username) {
@@ -245,6 +257,7 @@ function initFormSubmission() {
         method: 'POST',
         body: JSON.stringify({
           username,
+          title,
           settings,
           image: state.uploadedImageBase64,
           fingerprint: clientFp
@@ -258,7 +271,8 @@ function initFormSubmission() {
       const newPost = response.data.post;
       showToast('Settings shared successfully! ✓', 'success', 3500);
 
-      // Clear form settings & image (keep username)
+      // Clear form title, settings & image (keep username)
+      if (elements.titleInput) elements.titleInput.value = '';
       elements.settingsInput.value = '';
       clearImageUpload();
 
@@ -808,18 +822,53 @@ function renderPostCardHTML(post) {
   const safeId = Number(post.id);
   const rawUsername = post.username || 'Anonymous';
   const safeUsername = escapeHTML(rawUsername);
-  const highlightedUsername = state.searchQuery ? highlightSearchMatch(rawUsername, state.searchQuery) : safeUsername;
-  
+  const rawTitle = (post.title || '').trim();
   const rawSettings = post.settings || '';
+
+  const highlightedUsername = state.searchQuery ? highlightSearchMatch(rawUsername, state.searchQuery) : safeUsername;
+  const highlightedTitle = state.searchQuery ? highlightSearchMatch(rawTitle, state.searchQuery) : escapeHTML(rawTitle);
   const highlightedSettings = state.searchQuery ? highlightSearchMatch(rawSettings, state.searchQuery) : escapeHTML(rawSettings);
 
-  const relativeTime = formatRelativeTime(post.createdAt);
+  const timeInfo = formatPublishedTime(post.createdAt);
   const likesCount = Number(post.likes) || 0;
   const initial = (safeUsername[0] || 'F').toUpperCase();
+
+  // Search match detection for match indicator badges
+  let matchBadgesHtml = '';
+  if (state.searchQuery) {
+    const term = state.searchQuery.toLowerCase().trim();
+    const tokens = term.split(/\s+/).filter(t => t.length > 0);
+
+    const matchesUser = rawUsername.toLowerCase().includes(term) || tokens.some(t => rawUsername.toLowerCase().includes(t));
+    const matchesTitle = rawTitle && (rawTitle.toLowerCase().includes(term) || tokens.some(t => rawTitle.toLowerCase().includes(t)));
+    const matchesSettings = rawSettings.toLowerCase().includes(term) || tokens.some(t => rawSettings.toLowerCase().includes(t));
+
+    const badges = [];
+    if (matchesTitle) {
+      badges.push('<span class="match-tag tag-title" title="Search query matched in Post Title">✓ In Title</span>');
+    }
+    if (matchesSettings) {
+      badges.push('<span class="match-tag tag-settings" title="Search query matched in Text Content">✓ In Text</span>');
+    }
+    if (matchesUser) {
+      badges.push('<span class="match-tag tag-user" title="Search query matched in Username">✓ In Author</span>');
+    }
+
+    if (badges.length > 0) {
+      matchBadgesHtml = `<div class="search-match-badges">${badges.join('')}</div>`;
+    }
+  }
 
   // Check if current browser liked this post
   const likedPosts = JSON.parse(localStorage.getItem('ff_liked_posts') || '[]');
   const isLiked = likedPosts.includes(safeId);
+
+  const titleHtml = rawTitle
+    ? `<h3 class="post-card-title">
+         <svg class="title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M6 6h10"></path><path d="M6 10h10"></path></svg>
+         <span>${highlightedTitle}</span>
+       </h3>`
+    : '';
 
   const imageHtml = post.image
     ? `<div class="post-image-container" onclick="openImageModal('${escapeHTML(post.image)}')">
@@ -843,11 +892,19 @@ function renderPostCardHTML(post) {
             <div class="user-name-row">
               <span class="user-name">${highlightedUsername}</span>
             </div>
-            <time class="post-time">${relativeTime}</time>
+            <time class="post-time" datetime="${escapeHTML(post.createdAt || '')}" title="Published on ${escapeHTML(timeInfo.full)}">
+              <svg class="post-time-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span>Published: ${timeInfo.display}</span>
+            </time>
           </div>
         </div>
-        <a href="post.html?id=${safeId}" class="post-id-badge" title="View standalone post #${safeId}">#${safeId}</a>
+        <div class="post-header-right">
+          ${matchBadgesHtml}
+          <a href="post.html?id=${safeId}" class="post-id-badge" title="View standalone post #${safeId}">#${safeId}</a>
+        </div>
       </header>
+
+      ${titleHtml}
 
       <div class="post-settings-box">${highlightedSettings}</div>
 
@@ -869,10 +926,11 @@ function renderPostCardHTML(post) {
             type="button"
             class="btn-action btn-copy"
             onclick="handleCopyClick(${safeId}, this)"
-            aria-label="Copy settings from post #${safeId}"
+            title="Copy text content (excludes title)"
+            aria-label="Copy text from post #${safeId}"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
-            <span>Copy Settings</span>
+            <span>Copy Text</span>
           </button>
         </div>
 

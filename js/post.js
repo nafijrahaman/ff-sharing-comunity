@@ -57,7 +57,8 @@ async function loadSinglePost() {
     }
 
     currentPost = res.data.post;
-    document.title = `Free Fire Sensitivity #${currentPost.id} by ${currentPost.username} — FF-SHARING`;
+    const postTitlePrefix = currentPost.title ? `${currentPost.title} — ` : '';
+    document.title = `${postTitlePrefix}Free Fire Settings #${currentPost.id} by ${currentPost.username} — FF-SHARING`;
     renderSinglePost(currentPost, containerEl);
     containerEl.style.display = 'block';
 
@@ -71,13 +72,22 @@ async function loadSinglePost() {
 function renderSinglePost(post, container) {
   const safeId = Number(post.id);
   const safeUsername = escapeHTML(post.username || 'Anonymous');
+  const rawTitle = (post.title || '').trim();
+  const safeTitle = escapeHTML(rawTitle);
   const safeSettings = escapeHTML(post.settings || '');
-  const relativeTime = formatRelativeTime(post.createdAt);
+  const timeInfo = formatPublishedTime(post.createdAt);
   const likesCount = Number(post.likes) || 0;
   const initial = (safeUsername[0] || 'F').toUpperCase();
 
   const likedPosts = JSON.parse(localStorage.getItem('ff_liked_posts') || '[]');
   const isLiked = likedPosts.includes(safeId);
+
+  const titleHtml = rawTitle
+    ? `<h1 class="single-post-title">
+         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent-ff)" stroke-width="2.5"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M6 6h10"></path><path d="M6 10h10"></path></svg>
+         <span>${safeTitle}</span>
+       </h1>`
+    : '';
 
   const imageHtml = post.image
     ? `<div class="post-image-container" onclick="openImageModal('${escapeHTML(post.image)}')" style="max-height: 480px;">
@@ -92,11 +102,16 @@ function renderSinglePost(post, container) {
           <div class="user-avatar" style="width: 44px; height: 44px; font-size: 1.15rem;">${initial}</div>
           <div class="user-meta">
             <span class="user-name" style="font-size: 1.05rem;">${safeUsername}</span>
-            <time class="post-time">${relativeTime} • View Profile ↗</time>
+            <time class="post-time" datetime="${escapeHTML(post.createdAt || '')}" title="Published on ${escapeHTML(timeInfo.full)}">
+              <svg class="post-time-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span>Published: ${timeInfo.display}</span>
+            </time>
           </div>
         </a>
         <div class="post-id-badge" style="font-size: 0.875rem; padding: 4px 12px;">#${safeId}</div>
       </header>
+
+      ${titleHtml}
 
       <div class="post-settings-box">${safeSettings}</div>
 
@@ -119,9 +134,11 @@ function renderSinglePost(post, container) {
             id="singleCopyBtn"
             class="btn-action btn-copy"
             onclick="handleSingleCopyClick(this)"
+            title="Copy text content (excludes title)"
+            aria-label="Copy text from post #${safeId}"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
-            <span>Copy Settings</span>
+            <span>Copy Text</span>
           </button>
         </div>
 

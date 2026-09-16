@@ -133,10 +133,10 @@ async function copySettingsText(text, buttonElement) {
     const originalHTML = buttonElement.innerHTML;
     if (success) {
       buttonElement.classList.add('copied');
-      buttonElement.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied ✓';
-      showToast('Settings copied to clipboard!', 'success', 2000);
+      buttonElement.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied Text ✓';
+      showToast('Text copied to clipboard! ✓', 'success', 2000);
     } else {
-      showToast('Could not copy settings', 'error');
+      showToast('Could not copy text', 'error');
     }
 
     setTimeout(() => {
@@ -193,19 +193,72 @@ function compressImageFile(file, maxWidth = 1200, quality = 0.75) {
   });
 }
 
-// 6. Time Formatting
-function formatRelativeTime(isoString) {
-  if (!isoString) return '';
+// 6. Time & Date Formatting
+function formatPublishedTime(isoString) {
+  if (!isoString) {
+    return {
+      relative: 'Just now',
+      formattedDate: '',
+      formattedTime: '',
+      full: '',
+      display: 'Just now'
+    };
+  }
+
   const date = new Date(isoString);
+  if (isNaN(date.getTime())) {
+    return {
+      relative: 'Just now',
+      formattedDate: '',
+      formattedTime: '',
+      full: '',
+      display: 'Just now'
+    };
+  }
+
   const now = new Date();
   const diffInSeconds = Math.floor((now - date) / 1000);
 
-  if (diffInSeconds < 60) return 'Just now';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  let relative = 'Just now';
+  if (diffInSeconds >= 60 && diffInSeconds < 3600) {
+    relative = `${Math.floor(diffInSeconds / 60)}m ago`;
+  } else if (diffInSeconds >= 3600 && diffInSeconds < 86400) {
+    relative = `${Math.floor(diffInSeconds / 3600)}h ago`;
+  } else if (diffInSeconds >= 86400 && diffInSeconds < 604800) {
+    relative = `${Math.floor(diffInSeconds / 86400)}d ago`;
+  } else if (diffInSeconds >= 604800) {
+    relative = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
 
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const formattedDate = date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  const formattedTime = date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+
+  const full = `${formattedDate} at ${formattedTime}`;
+
+  const display = diffInSeconds < 86400
+    ? `${relative} • ${formattedTime}`
+    : `${formattedDate} • ${formattedTime}`;
+
+  return {
+    relative,
+    formattedDate,
+    formattedTime,
+    full,
+    display
+  };
+}
+
+function formatRelativeTime(isoString) {
+  return formatPublishedTime(isoString).display;
 }
 
 // 7. Theme Management (Dark / Light with LocalStorage Persistence)
@@ -244,6 +297,7 @@ const DEFAULT_SEED_POSTS = [
     id: 1,
     postId: 1,
     username: 'HeadshotKing',
+    title: '🎯 One-Tap Headshot Sensitivity & DPI',
     settings: 'General: 98\nRed Dot: 92\n2x Scope: 88\n4x Scope: 82\nSniper Scope: 65\nFree Look: 70\nFire Button: 48%\nDPI: 440',
     image: '',
     likes: 42,
@@ -254,6 +308,7 @@ const DEFAULT_SEED_POSTS = [
     id: 2,
     postId: 2,
     username: 'ShadowNinja_FF',
+    title: '⚡ Pro 3-Finger Custom HUD & Sensitivity',
     settings: 'General: 100\nRed Dot: 95\n2x Scope: 90\n4x Scope: 85\nSniper Scope: 55\nFree Look: 80\nCustom HUD: 3 Finger Claw\nQuick Weapon Switch: ON',
     image: '',
     likes: 29,
@@ -264,6 +319,7 @@ const DEFAULT_SEED_POSTS = [
     id: 3,
     postId: 3,
     username: 'ProSniper99',
+    title: '🔭 Fast Drag Sniper Settings + High FPS',
     settings: 'General: 85\nRed Dot: 80\n2x Scope: 75\n4x Scope: 70\nSniper Scope: 95 (Instant Drag)\nFree Look: 50\nGraphics: Smooth + High FPS',
     image: '',
     likes: 18,
@@ -272,26 +328,35 @@ const DEFAULT_SEED_POSTS = [
   }
 ];
 
-// Helper: Make authenticated request directly to NRDB REST API
+// Helper: Make authenticated request directly to NRDB REST API with strict timeout
 async function directNrdbFetch(endpoint, options = {}) {
   const config = window.APP_CONFIG || {};
   const apiKey = config.NRDB_API_KEY || 'nrdb_live_b9719c563644853f6c54e725eb37d13f5b71d4da5c5fe429';
   const baseUrl = config.NRDB_BASE_URL || 'https://db.nafij.me/api/v1';
 
-  const res = await fetch(`${baseUrl}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      ...(options.headers || {})
-    }
-  });
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-  const json = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, data: json };
+    const res = await fetch(`${baseUrl}${endpoint}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        ...(options.headers || {})
+      }
+    });
+    clearTimeout(timeoutId);
+
+    const json = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data: json };
+  } catch (e) {
+    return { ok: false, status: 0, data: null };
+  }
 }
 
-// Client-Side NRDB Router & Data Processing (runs in browser seamlessly without Netlify CLI requirement)
+// Client-Side NRDB Router & Data Processing (runs in browser seamlessly with instantaneous fallback)
 async function directNrdbApiRouter(endpoint, options = {}) {
   const [route, queryString] = endpoint.split('?');
   const params = new URLSearchParams(queryString || '');
@@ -315,27 +380,33 @@ async function directNrdbApiRouter(endpoint, options = {}) {
         console.warn('Direct NRDB fetch failed, falling back to local cached store:', e.message);
       }
 
-      // If database is completely brand new/empty, check local cache
+      // Check local cache if network returned empty
       if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
         const cached = localStorage.getItem('ff_posts_cache');
         if (cached) {
-          rawPosts = JSON.parse(cached);
+          try {
+            rawPosts = JSON.parse(cached);
+          } catch (e) {}
         }
       }
 
-      // Standardize post objects (filtering for valid doc_ objects if returned from live DB)
-      let allPosts = (Array.isArray(rawPosts) ? rawPosts : [])
-        .filter(p => typeof p.id === 'string' && p.id.startsWith('doc_') && typeof p.postId === 'number')
-        .map((p, idx) => ({
-          _docId: p._docId || p._id || p.id,
-          id: Number(p.postId || p.id) || (rawPosts.length - idx),
-          username: (p.username || 'Anonymous').trim(),
-          settings: p.settings || '',
-          image: p.image || '',
-          likes: Number(p.likes) || 0,
-          likedBy: Array.isArray(p.likedBy) ? p.likedBy : [],
-          createdAt: p.createdAt || new Date().toISOString()
-        }));
+      // If still empty, use rich seed posts
+      if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
+        rawPosts = [...DEFAULT_SEED_POSTS];
+      }
+
+      // Standardize post objects
+      let allPosts = (Array.isArray(rawPosts) ? rawPosts : []).map((p, idx) => ({
+        _docId: p._docId || p._id || p.id || `doc_${p.postId || idx + 1}`,
+        id: Number(p.postId || p.id) || (rawPosts.length - idx),
+        username: (p.username || 'Anonymous').trim(),
+        title: (p.title || '').trim(),
+        settings: p.settings || '',
+        image: p.image || '',
+        likes: Number(p.likes) || 0,
+        likedBy: Array.isArray(p.likedBy) ? p.likedBy : [],
+        createdAt: p.createdAt || new Date().toISOString()
+      }));
 
       // Cache raw posts in localStorage for offline resilience
       try {
@@ -402,6 +473,7 @@ async function directNrdbApiRouter(endpoint, options = {}) {
         allPosts = allPosts.filter(p => {
           const idStr = String(p.id).toLowerCase();
           const pUser = (p.username || '').toLowerCase();
+          const pTitle = (p.title || '').toLowerCase();
           const pSettings = (p.settings || '').toLowerCase();
 
           // If user searches with '#ID' (e.g. #2), strictly match that exact post ID
@@ -410,9 +482,9 @@ async function directNrdbApiRouter(endpoint, options = {}) {
           }
 
           if (idStr === term) return true;
-          if (pUser.includes(term) || pSettings.includes(term)) return true;
+          if (pUser.includes(term) || pTitle.includes(term) || pSettings.includes(term)) return true;
           if (tokens.length > 1) {
-            return tokens.every(tok => pUser.includes(tok) || pSettings.includes(tok) || idStr === tok);
+            return tokens.every(tok => pUser.includes(tok) || pTitle.includes(tok) || pSettings.includes(tok) || idStr === tok);
           }
           return false;
         });
@@ -431,6 +503,7 @@ async function directNrdbApiRouter(endpoint, options = {}) {
         id: Number(p.id),
         _docId: p._docId,
         username: p.username || 'Anonymous',
+        title: p.title || '',
         settings: p.settings || '',
         image: p.image || '',
         likes: Number(p.likes) || 0,
@@ -470,10 +543,18 @@ async function directNrdbApiRouter(endpoint, options = {}) {
 
       if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
         const cached = localStorage.getItem('ff_posts_cache');
-        if (cached) rawPosts = JSON.parse(cached);
+        if (cached) {
+          try {
+            rawPosts = JSON.parse(cached);
+          } catch (e) {}
+        }
       }
 
-      const found = (Array.isArray(rawPosts) ? rawPosts : []).find(p => typeof p.id === 'string' && p.id.startsWith('doc_') && Number(p.postId) === postId);
+      if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
+        rawPosts = [...DEFAULT_SEED_POSTS];
+      }
+
+      const found = (Array.isArray(rawPosts) ? rawPosts : []).find(p => Number(p.postId || p.id) === postId);
       if (!found) {
         return { ok: false, status: 404, data: { success: false, message: 'Post Not Found' } };
       }
@@ -487,6 +568,7 @@ async function directNrdbApiRouter(endpoint, options = {}) {
             id: Number(found.postId || found.id),
             _docId: found._docId || found._id || found.id,
             username: found.username || 'Anonymous',
+            title: found.title || '',
             settings: found.settings || '',
             image: found.image || '',
             likes: Number(found.likes) || 0,
@@ -500,6 +582,7 @@ async function directNrdbApiRouter(endpoint, options = {}) {
     if (route === 'create-post' && method === 'POST') {
       const payload = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
       const username = (payload.username || '').trim();
+      const title = (payload.title || '').trim();
       const settings = (payload.settings || '').trim();
       const image = (payload.image || '').trim();
 
@@ -523,7 +606,7 @@ async function directNrdbApiRouter(endpoint, options = {}) {
           nextId = maxId + 1;
         }
       } catch (e) {
-        nextId = 1;
+        nextId = Date.now();
       }
 
       // Update sequence in Quick Storage
@@ -537,6 +620,7 @@ async function directNrdbApiRouter(endpoint, options = {}) {
       const newPostDoc = {
         postId: nextId,
         username,
+        title,
         settings,
         image,
         likes: 0,
@@ -573,8 +657,8 @@ async function directNrdbApiRouter(endpoint, options = {}) {
           message: 'Settings shared successfully!',
           post: {
             id: nextId,
-            _docId: savedDocId,
             username,
+            title,
             settings,
             image,
             likes: 0,
@@ -584,14 +668,14 @@ async function directNrdbApiRouter(endpoint, options = {}) {
       };
     }
 
-    // 4. LIKE POST
+    // 4. LIKE A POST
     if (route === 'like-post' && method === 'POST') {
       const payload = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
       const postId = Number(payload.postId);
-      const fingerprint = (payload.fingerprint || '').trim();
+      const fingerprint = payload.fingerprint || '';
 
       if (!postId || !fingerprint) {
-        return { ok: false, status: 400, data: { success: false, message: 'Invalid like request parameters.' } };
+        return { ok: false, status: 400, data: { success: false, message: 'Invalid like request' } };
       }
 
       let rawPosts = [];
@@ -602,30 +686,53 @@ async function directNrdbApiRouter(endpoint, options = {}) {
         }
       } catch (e) {}
 
-      const post = (Array.isArray(rawPosts) ? rawPosts : []).find(p => Number(p.postId || p.id) === postId);
-      if (!post) {
+      if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
+        const cached = localStorage.getItem('ff_posts_cache');
+        if (cached) {
+          try {
+            rawPosts = JSON.parse(cached);
+          } catch (e) {}
+        }
+      }
+
+      const target = (Array.isArray(rawPosts) ? rawPosts : []).find(p => Number(p.postId || p.id) === postId);
+      if (!target) {
         return { ok: false, status: 404, data: { success: false, message: 'Post not found' } };
       }
 
-      const likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
+      const likedBy = Array.isArray(target.likedBy) ? target.likedBy : [];
       if (likedBy.includes(fingerprint)) {
-        return { ok: true, status: 200, data: { success: true, likes: Number(post.likes) || 0, alreadyLiked: true } };
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            success: true,
+            likes: Number(target.likes) || 0,
+            alreadyLiked: true,
+            message: 'Already liked'
+          }
+        };
       }
 
-      const newLikes = (Number(post.likes) || 0) + 1;
+      const newLikes = (Number(target.likes) || 0) + 1;
       const updatedLikedBy = [...likedBy, fingerprint];
-      const docId = post._docId || post._id || post.id;
+      target.likes = newLikes;
+      target.likedBy = updatedLikedBy;
 
+      const docId = target._docId || target._id || target.id;
       if (typeof docId === 'string' && docId.startsWith('doc_')) {
         try {
           await directNrdbFetch(`/data/posts/${docId}`, {
             method: 'PATCH',
             body: JSON.stringify({ likes: newLikes, likedBy: updatedLikedBy })
           });
-        } catch (e) {
-          console.warn('Direct NRDB like update warning:', e.message);
-        }
+        } catch (e) {}
       }
+
+      // Update cache
+      try {
+        localStorage.setItem('ff_posts_cache', JSON.stringify(rawPosts));
+      } catch (e) {}
 
       return {
         ok: true,
@@ -752,28 +859,28 @@ async function directNrdbApiRouter(endpoint, options = {}) {
 
 // 8. Universal Resilient API Caller (Netlify Serverless + Direct NRDB Hybrid Engine)
 async function apiCall(endpoint, options = {}) {
-  // Check if we are running in an active Netlify deployment or netlify dev proxy
-  const isNetlifyHost = window.location.hostname.endsWith('netlify.app') || window.location.port === '8888';
-
-  if (isNetlifyHost) {
+  // Try Netlify Functions endpoint first (with 2.5s strict timeout)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
     const functionUrl = `/.netlify/functions/${endpoint}`;
-    try {
-      const response = await fetch(functionUrl, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(options.headers || {})
-        },
-        ...options
-      });
+    const response = await fetch(functionUrl, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+      },
+      signal: controller.signal,
+      ...options
+    });
+    clearTimeout(timeoutId);
 
-      // Valid response from Netlify Functions
-      if (response.status !== 404 && response.status !== 502) {
-        const data = await response.json();
-        return { ok: response.ok, status: response.status, data };
-      }
-    } catch (err) {
-      console.warn('Netlify function unavailable, seamlessly routing to Direct NRDB client:', err.message);
+    // Valid response from Netlify Functions
+    if (response.status !== 404 && response.status !== 502) {
+      const data = await response.json();
+      return { ok: response.ok, status: response.status, data };
     }
+  } catch (err) {
+    // Timeout or network error - smoothly fallback to direct router
   }
 
   // Seamless Direct NRDB REST API Execution

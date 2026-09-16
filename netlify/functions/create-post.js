@@ -41,6 +41,7 @@ exports.handler = async (event, context) => {
     }
 
     const rawUsername = (body.username || '').trim();
+    const rawTitle = (body.title || '').trim();
     const rawSettings = (body.settings || '').trim();
     const rawImage = (body.image || '').trim();
 
@@ -50,6 +51,10 @@ exports.handler = async (event, context) => {
     }
     if (rawUsername.length > 35) {
       return jsonResponse(400, { success: false, message: 'Username cannot exceed 35 characters.' });
+    }
+
+    if (rawTitle.length > 120) {
+      return jsonResponse(400, { success: false, message: 'Post title cannot exceed 120 characters.' });
     }
 
     if (!rawSettings) {
@@ -93,6 +98,7 @@ exports.handler = async (event, context) => {
     const newPost = {
       id: nextId,
       username: rawUsername,
+      title: rawTitle,
       settings: rawSettings,
       image: safeImage,
       likes: 0,
@@ -109,6 +115,7 @@ exports.handler = async (event, context) => {
       post: {
         id: newPost.id,
         username: newPost.username,
+        title: newPost.title,
         settings: newPost.settings,
         image: newPost.image,
         likes: newPost.likes,

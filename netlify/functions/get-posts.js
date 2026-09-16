@@ -22,6 +22,7 @@ exports.handler = async (event, context) => {
     const formattedPosts = result.posts.map(p => ({
       id: Number(p.id),
       username: p.username || 'Anonymous',
+      title: p.title || '',
       settings: p.settings || '',
       image: p.image || '',
       likes: Number(p.likes) || 0,

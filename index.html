@@ -12,17 +12,22 @@
   <meta property="og:url" content="https://ff-sharing.netlify.app/" />
   <meta property="og:title" content="FF-SHARING-COMMUNITY — Free Fire Settings Sharing" />
   <meta property="og:description" content="Share your Free Fire settings. Discover better sensitivity from the global community." />
-  <meta property="og:image" content="./assets/icon-512.png" />
+  <meta property="og:image" content="./assets/main-logo.jpg" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="FF-SHARING-COMMUNITY — Free Fire Settings Sharing" />
   <meta name="twitter:description" content="Share your Free Fire settings. Discover better sensitivity." />
+  <meta name="twitter:image" content="./assets/main-logo.jpg" />
   
-  <!-- PWA & Theme -->
+  <!-- PWA & Favicon -->
   <link rel="manifest" href="./manifest.json" />
   <meta name="theme-color" content="#07090e" />
-  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+  <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16x16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="48x48" href="./assets/favicon-48x48.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
   <link rel="apple-touch-icon" href="./assets/icon-192.png" />
 
   <!-- Styles -->
@@ -39,7 +44,7 @@
   <header class="site-header">
     <div class="container header-inner">
       <a href="index.html" class="logo-brand" aria-label="FF Sharing Community Homepage">
-        <div class="logo-icon">FF</div>
+        <img src="./assets/main-logo.jpg" alt="FF Sharing Logo" class="brand-logo-img" width="38" height="38" />
         <div class="logo-text">
           <span class="logo-title">FF-SHARING</span>
           <span class="logo-tag">Community</span>
@@ -64,6 +69,9 @@
     
     <!-- Hero Section -->
     <section class="hero-section">
+      <div class="hero-emblem-wrapper">
+        <img src="./assets/main-logo.jpg" alt="FF Sharing Community" class="hero-logo-img" width="72" height="72" />
+      </div>
       <div class="hero-badge">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
         <span>No Login Required • 100% Free</span>
@@ -105,11 +113,23 @@
         </div>
 
         <div class="form-group">
-          <label for="postSettings" class="input-label">Sensitivity / Settings</label>
+          <label for="postTitle" class="input-label">Title (Optional)</label>
+          <input
+            type="text"
+            id="postTitle"
+            class="input-control"
+            placeholder="e.g. Best Headshot Sensitivity 2026, 4-Finger HUD, or Text Title..."
+            maxlength="100"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="postSettings" class="input-label">Sensitivity / Settings / Text</label>
           <textarea
             id="postSettings"
             class="input-control"
-            placeholder="Share your Free Fire sensitivity / settings...&#10;e.g.&#10;General: 98&#10;Red Dot: 92&#10;2x Scope: 88&#10;4x Scope: 82&#10;Sniper Scope: 65&#10;Free Look: 70"
+            placeholder="Share your Free Fire sensitivity, custom HUD, or text content...&#10;e.g.&#10;General: 98&#10;Red Dot: 92&#10;2x Scope: 88&#10;4x Scope: 82&#10;Sniper Scope: 65&#10;Free Look: 70"
             maxlength="2000"
             required
           ></textarea>
@@ -161,9 +181,9 @@
             type="search"
             id="searchInput"
             class="search-input"
-            placeholder="Search username, keywords, sensitivity... (e.g. 'HeadshotKing', 'red dot', '98')"
+            placeholder="Search title, keywords, settings, text, or username... (e.g. 'Headshot', 'red dot', 'DPI')"
             autocomplete="off"
-            aria-label="Search posts and usernames"
+            aria-label="Search posts, titles, and usernames"
           />
           <button id="searchClearBtn" class="search-clear-btn" aria-label="Clear Search" style="display: none;">✕</button>
         </div>
@@ -176,6 +196,7 @@
           <button type="button" class="search-tag-pill" data-search="Sniper">🔭 Sniper</button>
           <button type="button" class="search-tag-pill" data-search="DPI">⚙️ DPI</button>
           <button type="button" class="search-tag-pill" data-search="Smooth">📱 Smooth</button>
+          <button type="button" class="search-tag-pill" data-search="Text">📝 Text/Code</button>
         </div>
 
         <!-- Matched User Profile Results Preview (Appears when username match found during search) -->

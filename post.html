@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>Free Fire Settings — FF-SHARING-COMMUNITY</title>
+  <meta name="description" content="View Free Fire sensitivity and settings on FF-SHARING-COMMUNITY." />
+  
+  <!-- Open Graph -->
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Free Fire Sensitivity Settings — FF-SHARING-COMMUNITY" />
+  <meta property="og:description" content="Check out this Free Fire sensitivity settings shared on FF-SHARING-COMMUNITY." />
+  <meta property="og:image" content="./assets/main-logo.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="./assets/main-logo.jpg" />
+  
+  <!-- PWA & Favicon -->
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#07090e" />
+  <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+  <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16x16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="48x48" href="./assets/favicon-48x48.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="./css/style.css" />
+  <style>
+    .single-post-wrapper {
+      padding: 32px 0 48px;
+    }
+    .back-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--btn-secondary-bg);
+      border: 1px solid var(--btn-secondary-border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 600;
+      transition: all var(--transition-fast);
+    }
+    .btn-back:hover {
+      background: var(--card-border);
+      border-color: var(--accent-ff);
+      color: var(--accent-ff);
+      transform: translateX(-2px);
+    }
+    .single-card {
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-card);
+      backdrop-filter: var(--glass-blur);
+    }
+    .single-card .post-settings-box {
+      font-size: 0.95rem;
+      padding: 18px;
+      margin: 18px 0;
+      max-height: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Offline Status Banner -->
+  <div id="offlineBanner" class="offline-banner" role="alert">
+    ⚠️ You are offline. Posting and live community data require an internet connection.
+  </div>
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="index.html" class="logo-brand" aria-label="FF Sharing Community Homepage">
+        <img src="./assets/main-logo.jpg" alt="FF Sharing Logo" class="brand-logo-img" width="38" height="38" />
+        <div class="logo-text">
+          <span class="logo-title">FF-SHARING</span>
+          <span class="logo-tag">Community</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <button id="themeToggleBtn" class="icon-btn" aria-label="Toggle Theme"></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Single Post Content -->
+  <main class="container single-post-wrapper">
+    <div class="back-nav">
+      <a href="index.html" class="btn-back">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        <span>Back to Community</span>
+      </a>
+    </div>
+
+    <!-- Loading Container -->
+    <div id="singlePostLoading" class="loading-container">
+      <div class="spinner"></div>
+      <span>Loading post details...</span>
+    </div>
+
+    <!-- Post Details Container -->
+    <div id="singlePostContainer" style="display: none;">
+      <!-- Populated dynamically by js/post.js -->
+    </div>
+
+    <!-- 404 Post Not Found State -->
+    <div id="postNotFound" class="empty-state" style="display: none;">
+      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="var(--accent-rose)" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+      <h2 class="empty-title" style="font-size: 1.35rem;">Post Not Found</h2>
+      <p class="empty-desc" style="margin-bottom: 20px;">The requested Free Fire settings post (#<span id="missingPostId"></span>) does not exist or was deleted.</p>
+      <a href="index.html" class="btn-primary" style="display: inline-flex; width: auto; padding: 10px 24px;">Back to Community</a>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p><strong>FF-SHARING-COMMUNITY</strong> — Built for the Free Fire gaming community.</p>
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="index.html#createPostForm">Share Settings</a>
+        <a href="admin.html">Admin</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="./js/config.js"></script>
+  <script src="./js/utils.js"></script>
+  <script src="./js/post.js"></script>
+</body>
+</html>

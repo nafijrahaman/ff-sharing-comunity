@@ -201,8 +201,9 @@ function renderAdminPosts(filterQuery = '') {
     list = list.filter(p => {
       const matchId = String(p.id) === term || `#${p.id}` === term;
       const matchUser = (p.username || '').toLowerCase().includes(term);
+      const matchTitle = (p.title || '').toLowerCase().includes(term);
       const matchSettings = (p.settings || '').toLowerCase().includes(term);
-      return matchId || matchUser || matchSettings;
+      return matchId || matchUser || matchTitle || matchSettings;
     });
   }
 
@@ -219,16 +220,18 @@ function renderAdminPosts(filterQuery = '') {
     .map(p => {
       const safeId = Number(p.id);
       const safeUser = escapeHTML(p.username || 'Anonymous');
+      const safeTitle = escapeHTML((p.title || '').trim());
       const safeSettings = escapeHTML(p.settings || '');
-      const timeStr = formatRelativeTime(p.createdAt);
+      const timeStr = formatPublishedTime ? formatPublishedTime(p.createdAt).display : formatRelativeTime(p.createdAt);
 
       return `
         <div class="admin-post-item">
           <div class="admin-post-meta">
-            <div style="display:flex; align-items:center; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span class="post-id-badge">#${safeId}</span>
               <strong style="font-size:0.9rem;">${safeUser}</strong>
-              <span style="font-size:0.75rem; color:var(--text-muted);">${timeStr}</span>
+              ${safeTitle ? `<span style="font-weight:600; color:var(--accent-ice); font-size:0.85rem;">[${safeTitle}]</span>` : ''}
+              <span style="font-size:0.75rem; color:var(--text-muted);">🕒 ${timeStr}</span>
               <span style="font-size:0.75rem; color:var(--accent-rose);">❤️ ${p.likes || 0}</span>
             </div>
             <div class="admin-post-content">${safeSettings}</div>

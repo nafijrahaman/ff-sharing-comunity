@@ -28,6 +28,7 @@ exports.handler = async (event, context) => {
       post: {
         id: Number(post.id),
         username: post.username || 'Anonymous',
+        title: post.title || '',
         settings: post.settings || '',
         image: post.image || '',
         likes: Number(post.likes) || 0,

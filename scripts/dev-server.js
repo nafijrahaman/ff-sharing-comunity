@@ -35,6 +35,7 @@ const MIME_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
   '.txt': 'text/plain'
 };
 

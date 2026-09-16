@@ -12,6 +12,7 @@ const memoryStore = {
     {
       id: 1,
       username: 'HeadshotKing',
+      title: '🎯 One-Tap Headshot Sensitivity & DPI',
       settings: 'General: 98\nRed Dot: 92\n2x Scope: 88\n4x Scope: 82\nSniper Scope: 65\nFree Look: 70\nFire Button: 48%\nDPI: 440',
       image: '',
       likes: 42,
@@ -21,6 +22,7 @@ const memoryStore = {
     {
       id: 2,
       username: 'ShadowNinja_FF',
+      title: '⚡ Pro 3-Finger Custom HUD & Sensitivity',
       settings: 'General: 100\nRed Dot: 95\n2x Scope: 90\n4x Scope: 85\nSniper Scope: 55\nFree Look: 80\nCustom HUD: 3 Finger\nQuick Weapon Switch: ON',
       image: '',
       likes: 29,
@@ -30,6 +32,7 @@ const memoryStore = {
     {
       id: 3,
       username: 'ProSniper99',
+      title: '🔭 Fast Drag Sniper Settings + High FPS',
       settings: 'General: 85\nRed Dot: 80\n2x Scope: 75\n4x Scope: 70\nSniper Scope: 95 (Fast Drag)\nFree Look: 50\nGraphics: Smooth + High FPS',
       image: '',
       likes: 18,
@@ -89,10 +92,15 @@ async function nrdbFetch(endpoint, options = {}) {
   };
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
     const response = await fetch(url, {
       ...options,
+      signal: controller.signal,
       headers
     });
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -177,6 +185,7 @@ async function insertPost(postData) {
 
   const payload = {
     username: postData.username || 'Anonymous',
+    title: (postData.title || '').trim(),
     settings: postData.settings || '',
     image: postData.image || '',
     likes: Number(postData.likes) || 0,
@@ -304,6 +313,7 @@ async function getPostsList({ page = 1, limit = 20, search = '', username = '' }
     allPosts = allPosts.filter(p => {
       const idStr = String(p.id).toLowerCase();
       const pUser = (p.username || '').toLowerCase();
+      const pTitle = (p.title || '').toLowerCase();
       const pSettings = (p.settings || '').toLowerCase();
 
       // If user searches with '#ID' (e.g. #2), strictly match that exact post ID
@@ -314,13 +324,13 @@ async function getPostsList({ page = 1, limit = 20, search = '', username = '' }
       // Exact ID match
       if (idStr === term) return true;
 
-      // Full search term containment
-      if (pUser.includes(term) || pSettings.includes(term)) return true;
+      // Full search term containment across username, title, or settings
+      if (pUser.includes(term) || pTitle.includes(term) || pSettings.includes(term)) return true;
 
-      // All search tokens present across user or settings
+      // All search tokens present across user, title, or settings
       if (tokens.length > 1) {
         const allTokensMatch = tokens.every(tok => 
-          pUser.includes(tok) || pSettings.includes(tok) || idStr === tok || `#${idStr}` === tok
+          pUser.includes(tok) || pTitle.includes(tok) || pSettings.includes(tok) || idStr === tok || `#${idStr}` === tok
         );
         if (allTokensMatch) return true;
       }
