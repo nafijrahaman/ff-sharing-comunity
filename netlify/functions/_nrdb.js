@@ -93,7 +93,7 @@ async function nrdbFetch(endpoint, options = {}) {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     const response = await fetch(url, {
       ...options,
@@ -230,13 +230,15 @@ async function getPostsList({ page = 1, limit = 20, search = '', username = '' }
       const items = res?.data?.items || res?.data || res?.items || [];
       if (Array.isArray(items) && items.length > 0) {
         allPosts = items
-          .filter(p => (typeof p.id === 'string' && p.id.startsWith('doc_')) || typeof p.postId === 'number')
-          .filter(p => typeof p.id === 'string' && p.id.startsWith('doc_'))
-          .map(p => ({
-            ...p,
-            _docId: p._id || p.id,
-            id: Number(p.postId)
-          }));
+          .filter(p => p && (p.postId !== undefined || p.id !== undefined))
+          .map(p => {
+            const numId = Number(p.postId !== undefined && p.postId !== null ? p.postId : p.id) || 1;
+            return {
+              ...p,
+              _docId: p._id || p.id || `doc_${numId}`,
+              id: numId
+            };
+          });
       } else {
         allPosts = [...memoryStore.posts];
       }

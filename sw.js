@@ -3,7 +3,7 @@
  * Caches static shell assets for fast load and offline shell display.
  */
 
-const CACHE_NAME = 'ff-sharing-cache-v1.0.1';
+const CACHE_NAME = 'ff-sharing-cache-v1.0.2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

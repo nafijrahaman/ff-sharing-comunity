@@ -248,6 +248,7 @@ function initFormSubmission() {
 
     // Set Loading state
     state.isSubmitting = true;
+    showTopProgress();
     elements.btnSubmitPost.disabled = true;
     elements.submitBtnText.textContent = 'Sharing...';
 
@@ -288,6 +289,7 @@ function initFormSubmission() {
       showToast(err.message || 'Something went wrong. Please try again.', 'error');
     } finally {
       state.isSubmitting = false;
+      hideTopProgress();
       elements.btnSubmitPost.disabled = false;
       elements.submitBtnText.textContent = 'Share Settings';
     }
@@ -586,18 +588,16 @@ function initLoadMore() {
 // 10. Fetch Feed Posts
 async function fetchFeedPosts(page = 1, append = false) {
   state.isLoadingFeed = true;
-  elements.feedLoading.style.display = 'flex';
+  showTopProgress();
   
   if (!append) {
-    // Instant SWR (Stale-While-Revalidate) - Render cache immediately
+    // Instant SWR (Stale-While-Revalidate) - Render cache immediately if available
     if (page === 1) {
       try {
         const cachedStr = localStorage.getItem('ff_posts_cache');
         if (cachedStr) {
           const cached = JSON.parse(cachedStr);
           if (Array.isArray(cached) && cached.length > 0) {
-            elements.feedLoading.style.display = 'none';
-            elements.emptyState.style.display = 'none';
             state.posts = cached;
             renderPostsFeed(cached);
           }
@@ -605,8 +605,10 @@ async function fetchFeedPosts(page = 1, append = false) {
       } catch (e) {}
     }
     
-    if (elements.postsFeed.innerHTML.trim() === '') {
+    // If no posts yet, show loading spinner container
+    if (!state.posts || state.posts.length === 0) {
       elements.postsFeed.innerHTML = '';
+      elements.feedLoading.style.display = 'flex';
     }
     elements.emptyState.style.display = 'none';
     elements.btnLoadMore.style.display = 'none';
@@ -687,6 +689,7 @@ async function fetchFeedPosts(page = 1, append = false) {
     showToast(err.message || 'Network error loading feed.', 'error');
   } finally {
     state.isLoadingFeed = false;
+    hideTopProgress();
     elements.feedLoading.style.display = 'none';
     elements.postsFeed.setAttribute('aria-busy', 'false');
   }
