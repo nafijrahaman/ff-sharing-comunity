@@ -7,7 +7,7 @@
 const state = {
   posts: [],
   page: 1,
-  limit: 100, // Show many posts instantly
+  limit: 20, // Show 20 recent posts per page by default
   total: 0,
   hasMore: false,
   searchQuery: '',
@@ -592,26 +592,33 @@ async function fetchFeedPosts(page = 1, append = false) {
   
   if (!append) {
     // Instant SWR (Stale-While-Revalidate) - Render cache immediately if available
-    if (page === 1) {
+    let hasRenderedCache = false;
+    if (page === 1 && !state.searchQuery && !state.selectedUser) {
       try {
         const cachedStr = localStorage.getItem('ff_posts_cache');
         if (cachedStr) {
           const cached = JSON.parse(cachedStr);
           if (Array.isArray(cached) && cached.length > 0) {
-            state.posts = cached;
-            renderPostsFeed(cached);
+            state.total = cached.length;
+            state.hasMore = cached.length > state.limit;
+            state.posts = cached.slice(0, state.limit);
+            renderPostsFeed(state.posts);
+            renderTopPaginationBoxes();
+            updateCountBadge();
+            elements.btnLoadMore.style.display = state.hasMore ? 'block' : 'none';
+            hasRenderedCache = true;
           }
         }
       } catch (e) {}
     }
     
     // If no posts yet, show loading spinner container
-    if (!state.posts || state.posts.length === 0) {
+    if (!hasRenderedCache && (!state.posts || state.posts.length === 0)) {
       elements.postsFeed.innerHTML = '';
       elements.feedLoading.style.display = 'flex';
+      elements.btnLoadMore.style.display = 'none';
     }
     elements.emptyState.style.display = 'none';
-    elements.btnLoadMore.style.display = 'none';
   }
 
   const queryParams = new URLSearchParams({
