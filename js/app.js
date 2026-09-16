@@ -7,7 +7,7 @@
 const state = {
   posts: [],
   page: 1,
-  limit: 20,
+  limit: 100, // Show many posts instantly
   total: 0,
   hasMore: false,
   searchQuery: '',
@@ -201,7 +201,8 @@ function initImageUpload() {
 async function handleImageSelection(file) {
   try {
     showToast('Compressing image...', 'info', 1000);
-    const compressedDataUrl = await compressImageFile(file, 1200, 0.75);
+    // Increased compression (800px, 0.6 quality) to avoid localStorage 5MB quota errors
+    const compressedDataUrl = await compressImageFile(file, 800, 0.6);
     state.uploadedImageBase64 = compressedDataUrl;
     elements.imagePreview.src = compressedDataUrl;
     elements.imagePreviewContainer.style.display = 'block';
@@ -586,8 +587,24 @@ function initLoadMore() {
 async function fetchFeedPosts(page = 1, append = false) {
   state.isLoadingFeed = true;
   elements.feedLoading.style.display = 'flex';
+  
   if (!append) {
-    elements.postsFeed.innerHTML = '';
+    // Instant SWR (Stale-While-Revalidate) - Render cache immediately
+    if (page === 1) {
+      try {
+        const cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
+        if (cached && cached.length > 0) {
+          elements.feedLoading.style.display = 'none';
+          elements.emptyState.style.display = 'none';
+          state.posts = cached;
+          renderPostsFeed(cached);
+        }
+      } catch (e) {}
+    }
+    
+    if (elements.postsFeed.innerHTML.trim() === '') {
+      elements.postsFeed.innerHTML = '';
+    }
     elements.emptyState.style.display = 'none';
     elements.btnLoadMore.style.display = 'none';
   }
