@@ -1,45 +1,69 @@
 /**
- * Vercel Serverless Function: POST /api/admin-delete-all
- * Deletes ALL posts from MongoDB and resets the post counter.
+ * Vercel Serverless Function: POST /api/admin-delete-all & DELETE /api/admin-delete-all
+ * Purges ALL posts, users, GridFS screenshots and resets post sequence counter.
  */
-const { MongoClient } = require('mongodb');
+'use strict';
 
-let cachedClient = null;
-let cachedDb = null;
-
-async function getDb() {
-  const uri = process.env.MONGODB_URI || process.env.MONGO_URI || '';
-  if (!uri) throw new Error('MONGODB_URI is not configured');
-  if (cachedClient && cachedDb) return cachedDb;
-  const client = new MongoClient(uri, { maxPoolSize: 10, serverSelectionTimeoutMS: 5000 });
-  await client.connect();
-  const db = client.db(process.env.MONGODB_DB_NAME || 'ff_sharing');
-  cachedClient = client;
-  cachedDb = db;
-  return db;
-}
+const { getDb } = require('./_db');
+const { requireAdminAuth } = require('./_auth');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-token');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method Not Allowed' });
+  if (req.method !== 'POST' && req.method !== 'DELETE') {
+    return res.status(405).json({
+      success: false,
+      error: { code: 'METHOD_NOT_ALLOWED', message: 'Method Not Allowed. Use POST or DELETE.' }
+    });
+  }
+
+  // 1. Verify Admin Authentication
+  if (!requireAdminAuth(req, res)) return;
 
   try {
+    const body = req.body || {};
+    if (body.confirm !== true && body.confirm !== 'CONFIRM_DELETE_ALL') {
+      return res.status(400).json({
+        success: false,
+        message: 'Explicit confirmation is required to wipe the database.',
+        error: { code: 'CONFIRMATION_REQUIRED', message: 'Set confirm: "CONFIRM_DELETE_ALL" in request body.' }
+      });
+    }
+
     const db = await getDb();
 
-    const result = await db.collection('posts').deleteMany({});
-    await db.collection('counters').updateOne({ _id: 'postId' }, { $set: { seq: 0 } }, { upsert: true });
+    // 1. Delete all posts
+    const postsResult = await db.collection('posts').deleteMany({});
+
+    // 2. Delete all users
+    await db.collection('users').deleteMany({}).catch(() => {});
+
+    // 3. Reset counter sequence to 0
+    await db.collection('counters').updateOne(
+      { _id: 'postId' },
+      { $set: { seq: 0 } },
+      { upsert: true }
+    ).catch(() => {});
+
+    // 4. Purge GridFS screenshot files & chunks
+    await db.collection('screenshots.files').deleteMany({}).catch(() => {});
+    await db.collection('screenshots.chunks').deleteMany({}).catch(() => {});
 
     return res.status(200).json({
       success: true,
-      deletedCount: result.deletedCount,
-      message: `All ${result.deletedCount} posts purged. Database reset to new!`
+      deletedCount: postsResult.deletedCount,
+      message: `Database wiped clean. Purged ${postsResult.deletedCount} posts. Counter reset to #1.`
     });
+
   } catch (err) {
-    console.error('POST /api/admin-delete-all error:', err.message);
-    return res.status(500).json({ success: false, message: 'Failed to delete all posts: ' + err.message });
+    console.error('Delete all error:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to purge database.',
+      error: { code: 'DB_ERROR', message: err.message }
+    });
   }
 };

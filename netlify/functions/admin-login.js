@@ -1,8 +1,7 @@
 const crypto = require('crypto');
-const { jsonResponse } = require('./_nrdb');
+const { jsonResponse } = require('./_mongo');
 
-// Hardcoded admin password as specified in requirements
-const DEFAULT_ADMIN_PASSWORD = 'nafijthepro';
+const DEFAULT_ADMIN_PASSWORD = 'adminpassword';
 
 function getAdminPassword() {
   return process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;

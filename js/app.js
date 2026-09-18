@@ -26,6 +26,10 @@ const state = {
   feedStatus: 'idle',   // idle | loading | success | empty | error | loadingMore
   isSubmitting: false,
   uploadedImageBase64: '',
+  uploadedImageUrl: '',
+  uploadStatus: 'idle', // idle | uploading | uploaded | error
+  selectedImageFile: null,
+  uploadPromise: null,
   deferredInstallPrompt: null,
   // Race condition protection
   _requestToken: 0,
@@ -61,6 +65,8 @@ const el = {
   imagePreviewContainer: document.getElementById('imagePreviewContainer'),
   imagePreview: document.getElementById('imagePreview'),
   btnRemoveImage: document.getElementById('btnRemoveImage'),
+  imageUploadStatusBadge: document.getElementById('imageUploadStatusBadge'),
+  btnRetryUpload: document.getElementById('btnRetryUpload'),
   btnSubmitPost: document.getElementById('btnSubmitPost'),
   submitBtnText: document.getElementById('submitBtnText'),
   topPaginationWrapper: document.getElementById('topPaginationWrapper'),
@@ -154,29 +160,120 @@ function initImageUpload() {
   el.imageInput.addEventListener('change', async (e) => {
     if (e.target.files.length > 0) await handleImageSelection(e.target.files[0]);
   });
-  el.btnRemoveImage.addEventListener('click', clearImageUpload);
+  if (el.btnRemoveImage) el.btnRemoveImage.addEventListener('click', clearImageUpload);
+
+  if (el.btnRetryUpload) {
+    el.btnRetryUpload.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.selectedImageFile) {
+        updateUploadBadgeUI('uploading');
+        state.uploadStatus = 'uploading';
+        state.uploadPromise = executeImageUpload(state.selectedImageFile).catch(() => {});
+      }
+    });
+  }
 }
 
 async function handleImageSelection(file) {
+  if (!file) return;
+
+  // Validate type
+  if (!file.type || !file.type.startsWith('image/')) {
+    showToast('Please select a valid image file (PNG, JPG, WebP).', 'error');
+    return;
+  }
+
+  // Validate size (max 10MB)
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('Image exceeds 10MB maximum limit.', 'error');
+    return;
+  }
+
+  state.selectedImageFile = file;
+  state.uploadedImageUrl = '';
+  state.uploadStatus = 'uploading';
+
+  // 1. Instant local preview (URL.createObjectURL)
   try {
-    showToast('Compressing image...', 'info', 1000);
-    const compressed = await compressImageFile(file, 800, 0.6);
-    state.uploadedImageBase64 = compressed;
-    el.imagePreview.src = compressed;
-    el.imagePreviewContainer.style.display = 'block';
-    el.imageDropzone.style.display = 'none';
+    el.imagePreview.src = URL.createObjectURL(file);
+  } catch (_) {}
+  el.imagePreviewContainer.style.display = 'block';
+  el.imageDropzone.style.display = 'none';
+  updateUploadBadgeUI('uploading');
+
+  // 2. Begin upload immediately in background
+  state.uploadPromise = executeImageUpload(file);
+}
+
+function updateUploadBadgeUI(status, message) {
+  if (!el.imageUploadStatusBadge) return;
+  el.imageUploadStatusBadge.className = `upload-status-badge ${status}`;
+
+  const textSpan = el.imageUploadStatusBadge.querySelector('.status-text') || el.imageUploadStatusBadge;
+
+  if (status === 'uploading') {
+    el.imageUploadStatusBadge.style.display = 'inline-flex';
+    textSpan.innerHTML = '<span class="badge-spinner"></span> Uploading screenshot...';
+    if (el.btnRetryUpload) el.btnRetryUpload.style.display = 'none';
+  } else if (status === 'uploaded') {
+    el.imageUploadStatusBadge.style.display = 'inline-flex';
+    textSpan.textContent = '✓ Uploaded to storage';
+    if (el.btnRetryUpload) el.btnRetryUpload.style.display = 'none';
+  } else if (status === 'error') {
+    el.imageUploadStatusBadge.style.display = 'inline-flex';
+    textSpan.textContent = message || '⚠️ Upload failed. Retry';
+    if (el.btnRetryUpload) el.btnRetryUpload.style.display = 'inline-block';
+  } else {
+    el.imageUploadStatusBadge.style.display = 'none';
+    if (el.btnRetryUpload) el.btnRetryUpload.style.display = 'none';
+  }
+}
+
+async function executeImageUpload(file) {
+  try {
+    let payload = '';
+    // Compress if file > 500KB to ensure ultra-fast network transfer
+    if (file.size > 500 * 1024) {
+      payload = await compressImageFile(file, 1400, 0.82);
+    } else {
+      payload = await fileToDataURL(file);
+    }
+
+    state.uploadedImageBase64 = payload;
+
+    const res = await apiCall('upload', {
+      method: 'POST',
+      body: JSON.stringify({ image: payload })
+    });
+
+    if (!res.ok || !res.data || !res.data.success) {
+      throw new Error((res.data && res.data.error && res.data.error.message) || (res.data && res.data.message) || 'Upload failed');
+    }
+
+    const url = res.data.imageUrl || (res.data.data && res.data.data.imageUrl) || res.data.url;
+    state.uploadedImageUrl = url;
+    state.uploadStatus = 'uploaded';
+    updateUploadBadgeUI('uploaded');
+    return url;
   } catch (err) {
-    showToast(err.message || 'Invalid image format', 'error');
-    clearImageUpload();
+    console.error('Upload failed:', err);
+    state.uploadStatus = 'error';
+    updateUploadBadgeUI('error', '⚠️ Upload failed. Retry');
+    throw err;
   }
 }
 
 function clearImageUpload() {
   state.uploadedImageBase64 = '';
-  el.imageInput.value = '';
-  el.imagePreview.src = '';
-  el.imagePreviewContainer.style.display = 'none';
-  el.imageDropzone.style.display = 'flex';
+  state.uploadedImageUrl = '';
+  state.uploadStatus = 'idle';
+  state.selectedImageFile = null;
+  state.uploadPromise = null;
+  if (el.imageInput) el.imageInput.value = '';
+  if (el.imagePreview) el.imagePreview.src = '';
+  if (el.imagePreviewContainer) el.imagePreviewContainer.style.display = 'none';
+  if (el.imageDropzone) el.imageDropzone.style.display = 'flex';
+  updateUploadBadgeUI('idle');
 }
 
 // ─── 5. Form submission ───────────────────────────────────────────────────────
@@ -192,6 +289,28 @@ function initFormSubmission() {
     if (!username) { showToast('Please enter your username.', 'error'); el.usernameInput.focus(); return; }
     if (!settings) { showToast('Please enter sensitivity/settings text.', 'error'); el.settingsInput.focus(); return; }
 
+    // If an image was chosen and upload is still processing in background, wait for it
+    let finalImageUrl = state.uploadedImageUrl;
+    if (state.selectedImageFile && !finalImageUrl) {
+      if (state.uploadStatus === 'uploading' && state.uploadPromise) {
+        showToast('Finishing screenshot upload...', 'info', 2000);
+        try {
+          finalImageUrl = await state.uploadPromise;
+        } catch (_) {
+          showToast('Screenshot upload failed. Retrying upload...', 'info', 2000);
+          try {
+            finalImageUrl = await executeImageUpload(state.selectedImageFile);
+          } catch (retryErr) {
+            showToast('Could not upload screenshot. Please retry or remove it.', 'error');
+            return;
+          }
+        }
+      } else if (state.uploadStatus === 'error') {
+        showToast('Please retry uploading screenshot or remove it before sharing.', 'error');
+        return;
+      }
+    }
+
     localStorage.setItem('ff_saved_username', username);
     state.isSubmitting = true;
     showTopProgress();
@@ -201,7 +320,13 @@ function initFormSubmission() {
     try {
       const response = await apiCall('create-post', {
         method: 'POST',
-        body: JSON.stringify({ username, title, settings, image: state.uploadedImageBase64, fingerprint: getFingerprint() })
+        body: JSON.stringify({
+          username,
+          title,
+          settings,
+          image: finalImageUrl || state.uploadedImageBase64 || '',
+          fingerprint: getFingerprint()
+        })
       });
 
       if (!response.ok || !response.data.success) throw new Error(response.data.message || 'Failed to share settings.');
@@ -466,12 +591,13 @@ function initInfiniteScroll() {
     el.postsFeed.parentNode.insertBefore(sentinel, el.postsFeed.nextSibling);
   }
   state._sentinelEl = sentinel;
-  _attachObserver();
+  // Sentinel observer is attached only after initial page renders with content
 }
 
 function _attachObserver() {
   if (state._observer) state._observer.disconnect();
   if (!state._sentinelEl) return;
+  if (!state.hasMore || state.posts.length === 0) return;
 
   state._observer = new IntersectionObserver((entries) => {
     const entry = entries[0];
@@ -480,7 +606,6 @@ function _attachObserver() {
     if (state.feedStatus === 'loading' || state.feedStatus === 'loadingMore') return;
 
     const nextPage = state.page + 1;
-    state.page = nextPage;
     loadFeed({ page: nextPage, append: true });
   }, {
     rootMargin: '0px 0px 800px 0px',  // Prefetch 800px before bottom
@@ -502,13 +627,20 @@ function _attachObserver() {
  * - infinite scroll
  * - clear search
  *
- * Race condition protection: each call increments _requestToken.
- * If a newer call starts before an older one finishes, the older one's
+ * Race condition protection: each non-append call increments _requestToken.
+ * If a newer root call starts before an older one finishes, the older one's
  * result is discarded.
  */
 async function loadFeed({ page = 1, append = false } = {}) {
   // ── Race condition protection ──────────────────────────────────────────────
-  const myToken = ++state._requestToken;
+  let myToken;
+  if (!append) {
+    myToken = ++state._requestToken;
+  } else {
+    // Append is a continuation of current view; do not start if already loading page 1
+    if (state.feedStatus === 'loading') return;
+    myToken = state._requestToken;
+  }
 
   // ── Update status ──────────────────────────────────────────────────────────
   if (append) {
@@ -529,7 +661,8 @@ async function loadFeed({ page = 1, append = false } = {}) {
             renderPostsFeed(slice);
             state.posts = slice;
             state.total = cached.length;
-            state.hasMore = cached.length > state.limit;
+            // Prevent prefetching page 2 before server confirms live data
+            state.hasMore = false;
             updateCountBadge();
             renderTopPaginationBoxes();
             setLoadingMoreUI(false);

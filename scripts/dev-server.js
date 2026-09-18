@@ -57,8 +57,8 @@ const MIME = {
 const API_HANDLERS = {};
 const apiDir = path.join(__dirname, '..', 'api');
 for (const name of [
-  'get-posts', 'get-post', 'create-post', 'like-post',
-  'admin-login', 'admin-delete-post', 'admin-delete-user', 'admin-delete-all'
+  'get-posts', 'get-post', 'create-post', 'like-post', 'upload', 'image',
+  'admin-login', 'admin-delete-post', 'admin-delete-user', 'admin-delete-all', 'admin-users'
 ]) {
   const handlerPath = path.join(apiDir, `${name}.js`);
   if (fs.existsSync(handlerPath)) {
@@ -75,46 +75,28 @@ for (const name of [
 
 // ── Vercel-style request/response shim ────────────────────────────────────
 // Converts Node.js IncomingMessage/ServerResponse into the Vercel req/res shape
-// that our /api/*.js handlers expect (Express-like interface).
+// that our /api// ── Emulate Vercel Serverless Function req / res ───────────────────────────
 function makeVercelReqRes(req, query, body, rawRes) {
-  const vercelReq = {
-    method: req.method,
-    url: req.url,
-    headers: req.headers,
-    query,
-    body
+  const vercelReq = req;
+  vercelReq.query = query;
+  vercelReq.body = body;
+
+  rawRes.status = function(code) {
+    rawRes.statusCode = code;
+    return rawRes;
   };
 
-  let statusCode = 200;
-  const responseHeaders = {};
-
-  const vercelRes = {
-    statusCode,
-    status(code) {
-      statusCode = code;
-      vercelRes.statusCode = code;
-      return vercelRes;
-    },
-    setHeader(k, v) {
-      responseHeaders[k] = v;
-      return vercelRes;
-    },
-    json(data) {
-      const body = JSON.stringify(data);
-      rawRes.writeHead(statusCode, {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        ...responseHeaders
-      });
-      rawRes.end(body);
-    },
-    end(data) {
-      rawRes.writeHead(statusCode, responseHeaders);
-      rawRes.end(data);
+  rawRes.json = function(data) {
+    const jsonStr = JSON.stringify(data);
+    if (!rawRes.headersSent) {
+      rawRes.setHeader('Content-Type', 'application/json');
+      rawRes.setHeader('Content-Length', Buffer.byteLength(jsonStr));
+      rawRes.writeHead(rawRes.statusCode || 200);
     }
+    rawRes.end(jsonStr);
   };
 
-  return { vercelReq, vercelRes };
+  return { vercelReq, vercelRes: rawRes };
 }
 
 // ── Read request body ───────────────────────────────────────────────────────
@@ -145,8 +127,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-admin-token'
     });
     res.end();
     return;
@@ -154,7 +136,20 @@ const server = http.createServer(async (req, res) => {
 
   // ── 1. /api/:name — Vercel serverless functions ───────────────────────
   if (pathname.startsWith('/api/')) {
-    const name = pathname.replace('/api/', '').split('/')[0];
+    let name = pathname.replace('/api/', '').split('/')[0];
+    
+    // RESTful route aliases
+    if (pathname.startsWith('/api/admin/posts/')) {
+      name = 'admin-delete-post';
+      query.postId = pathname.replace('/api/admin/posts/', '').split('/')[0];
+    } else if (pathname.startsWith('/api/admin/users/')) {
+      name = 'admin-delete-user';
+      query.userId = pathname.replace('/api/admin/users/', '').split('/')[0];
+    } else if (pathname.startsWith('/api/posts/')) {
+      name = 'get-post';
+      query.id = pathname.replace('/api/posts/', '').split('/')[0];
+    }
+
     const handler = API_HANDLERS[name];
 
     if (!handler) {
@@ -225,21 +220,39 @@ const server = http.createServer(async (req, res) => {
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`\n❌ Port ${PORT} is already in use.`);
-    console.error(`   Kill the existing process or set PORT=<other> in .env\n`);
-  } else {
-    console.error('Server error:', err.message);
-  }
-  process.exit(1);
-});
+function startDevServer(port = PORT) {
+  return new Promise((resolve, reject) => {
+    const s = server.listen(port, () => {
+      console.log(`\n🚀 Dev server running at http://localhost:${port}`);
+      console.log(`   NODE_ENV  : ${process.env.NODE_ENV}`);
+      console.log(`   MONGODB   : ${process.env.MONGODB_URI ? '✓ configured' : '⚠ MONGODB_URI not set'}`);
+      console.log(`\n   API routes available at http://localhost:${port}/api/`);
+      console.log(`   Static files served from: ${ROOT_DIR}`);
+      resolve(s);
+    });
+    s.on('error', reject);
+  });
+}
 
-server.listen(PORT, () => {
-  console.log(`\n🚀 Dev server running at http://localhost:${PORT}`);
-  console.log(`   NODE_ENV  : ${process.env.NODE_ENV}`);
-  console.log(`   MONGODB   : ${process.env.MONGODB_URI ? '✓ configured' : '⚠ MONGODB_URI not set (using local cache fallback)'}`);
-  console.log(`\n   API routes available at http://localhost:${PORT}/api/`);
-  console.log(`   Static files served from: ${ROOT_DIR}`);
-  console.log(`\n   DEP0169: FIXED — url.parse() replaced with WHATWG URL API\n`);
-});
+if (require.main === module) {
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n❌ Port ${PORT} is already in use.`);
+      console.error(`   Kill the existing process or set PORT=<other> in .env\n`);
+    } else {
+      console.error('Server error:', err.message);
+    }
+    process.exit(1);
+  });
+
+  server.listen(PORT, () => {
+    console.log(`\n🚀 Dev server running at http://localhost:${PORT}`);
+    console.log(`   NODE_ENV  : ${process.env.NODE_ENV}`);
+    console.log(`   MONGODB   : ${process.env.MONGODB_URI ? '✓ configured' : '⚠ MONGODB_URI not set'}`);
+    console.log(`\n   API routes available at http://localhost:${PORT}/api/`);
+    console.log(`   Static files served from: ${ROOT_DIR}`);
+    console.log(`\n   DEP0169: FIXED — url.parse() replaced with WHATWG URL API\n`);
+  });
+}
+
+module.exports = { server, startDevServer };

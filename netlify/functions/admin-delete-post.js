@@ -1,4 +1,4 @@
-const { deletePostById, jsonResponse } = require('./_nrdb');
+const { deleteMongoPostById, jsonResponse } = require('./_mongo');
 const { verifyAdminToken } = require('./admin-login');
 
 exports.handler = async (event, context) => {
@@ -26,17 +26,17 @@ exports.handler = async (event, context) => {
       body = {};
     }
 
-    const postId = body.postId || event.queryStringParameters?.id;
+    const rawId = body.postId ?? body.id ?? body._id ?? event.queryStringParameters?.postId ?? event.queryStringParameters?.id;
 
-    if (!postId) {
+    if (rawId === undefined || rawId === null || rawId === '') {
       return jsonResponse(400, { success: false, message: 'Post ID is required' });
     }
 
-    await deletePostById(postId);
+    await deleteMongoPostById(rawId);
 
     return jsonResponse(200, {
       success: true,
-      message: `Post #${postId} permanently deleted.`
+      message: `Post ${rawId} permanently deleted.`
     });
   } catch (err) {
     console.error('Error in admin-delete-post:', err);

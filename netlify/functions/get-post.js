@@ -1,4 +1,4 @@
-const { getPostById, jsonResponse } = require('./_nrdb');
+const { getMongoPostById, jsonResponse } = require('./_mongo');
 
 exports.handler = async (event, context) => {
   if (event.httpMethod === 'OPTIONS') {
@@ -11,13 +11,13 @@ exports.handler = async (event, context) => {
 
   try {
     const params = event.queryStringParameters || {};
-    const postId = params.id;
+    const postId = params.id || params.postId;
 
     if (!postId) {
       return jsonResponse(400, { success: false, message: 'Post ID is required' });
     }
 
-    const post = await getPostById(postId);
+    const post = await getMongoPostById(postId);
 
     if (!post) {
       return jsonResponse(404, { success: false, message: 'Post Not Found' });
@@ -25,15 +25,8 @@ exports.handler = async (event, context) => {
 
     return jsonResponse(200, {
       success: true,
-      post: {
-        id: Number(post.id),
-        username: post.username || 'Anonymous',
-        title: post.title || '',
-        settings: post.settings || '',
-        image: post.image || '',
-        likes: Number(post.likes) || 0,
-        createdAt: post.createdAt || new Date().toISOString()
-      }
+      post,
+      data: { post }
     });
   } catch (err) {
     console.error('Error fetching single post:', err);

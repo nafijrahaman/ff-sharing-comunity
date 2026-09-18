@@ -529,6 +529,59 @@ textarea.input-control {
   transition: all var(--transition-fast);
 }
 
+.image-upload-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: rgba(10, 15, 25, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+}
+
+.image-upload-badge.uploading {
+  color: var(--accent-ff);
+  border-color: rgba(255, 119, 0, 0.4);
+}
+
+.image-upload-badge.uploaded {
+  color: var(--accent-emerald);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.image-upload-badge.error {
+  color: var(--accent-rose);
+  border-color: rgba(244, 63, 94, 0.4);
+}
+
+.btn-retry-upload {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: var(--accent-ff);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 2;
+  transition: opacity 0.2s ease;
+}
+
+.btn-retry-upload:hover {
+  opacity: 0.9;
+}
+
 .btn-remove-img:hover {
   background: var(--accent-rose);
   border-color: var(--accent-rose);

@@ -1,4 +1,4 @@
-const { getPostsList, jsonResponse } = require('./_nrdb');
+const { getMongoPostsList, jsonResponse } = require('./_mongo');
 
 exports.handler = async (event, context) => {
   if (event.httpMethod === 'OPTIONS') {
@@ -12,32 +12,34 @@ exports.handler = async (event, context) => {
   try {
     const params = event.queryStringParameters || {};
     const page = Math.max(1, parseInt(params.page, 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(params.limit, 10) || 20));
+    const limit = Math.min(100, Math.max(1, parseInt(params.limit, 10) || 20));
     const search = (params.q || params.search || '').trim();
     const username = (params.username || params.user || params.author || '').trim();
 
-    const result = await getPostsList({ page, limit, search, username });
+    const result = await getMongoPostsList({ page, limit, search, username });
 
-    // Sanitize and format post items for public consumption (strip likedBy array for privacy/bandwidth)
-    const formattedPosts = result.posts.map(p => ({
-      id: Number(p.id),
-      username: p.username || 'Anonymous',
-      title: p.title || '',
-      settings: p.settings || '',
-      image: p.image || '',
-      likes: Number(p.likes) || 0,
-      createdAt: p.createdAt || new Date().toISOString()
-    }));
+    if (!result) {
+      return jsonResponse(500, { success: false, message: 'Database connection failed' });
+    }
 
     return jsonResponse(200, {
       success: true,
-      posts: formattedPosts,
+      posts: result.posts,
       total: result.total,
       page: result.page,
       limit: result.limit,
       hasMore: result.hasMore,
       matchedUsers: result.matchedUsers || [],
-      userProfile: result.userProfile || null
+      userProfile: result.userProfile || null,
+      data: {
+        posts: result.posts,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        hasMore: result.hasMore,
+        matchedUsers: result.matchedUsers || [],
+        userProfile: result.userProfile || null
+      }
     });
   } catch (err) {
     console.error('Error fetching posts:', err);

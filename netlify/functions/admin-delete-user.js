@@ -1,4 +1,4 @@
-const { deletePostsByUsername, jsonResponse } = require('./_nrdb');
+const { deleteMongoPostsByUsername, jsonResponse } = require('./_mongo');
 const { verifyAdminToken } = require('./admin-login');
 
 exports.handler = async (event, context) => {
@@ -26,13 +26,13 @@ exports.handler = async (event, context) => {
       body = {};
     }
 
-    const username = (body.username || event.queryStringParameters?.username || '').trim();
+    const username = (body.username || body.userId || event.queryStringParameters?.username || event.queryStringParameters?.userId || '').trim();
 
     if (!username) {
-      return jsonResponse(400, { success: false, message: 'Username is required' });
+      return jsonResponse(400, { success: false, message: 'Username or userId is required' });
     }
 
-    const deletedCount = await deletePostsByUsername(username);
+    const deletedCount = await deleteMongoPostsByUsername(username);
 
     return jsonResponse(200, {
       success: true,

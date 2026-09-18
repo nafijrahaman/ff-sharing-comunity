@@ -317,6 +317,20 @@ async function deleteMongoAllPosts() {
   return res.deletedCount;
 }
 
+function jsonResponse(statusCode, data, extraHeaders = {}) {
+  return {
+    statusCode,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-admin-token',
+      ...extraHeaders
+    },
+    body: JSON.stringify(data)
+  };
+}
+
 module.exports = {
   isMongoConfigured,
   connectToMongo,
@@ -326,5 +340,7 @@ module.exports = {
   likeMongoPostById,
   deleteMongoPostById,
   deleteMongoPostsByUsername,
-  deleteMongoAllPosts
+  deleteMongoAllPosts,
+  jsonResponse
 };
+

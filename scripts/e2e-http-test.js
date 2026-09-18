@@ -93,10 +93,11 @@ async function runE2ETests() {
     check(userRes.status === 200 && userData.posts.every(p => p.username === 'HeadshotKing') && userData.userProfile?.username === 'HeadshotKing', 'get-posts?user=HeadshotKing returns userProfile and filtered creator posts');
 
     // 11. Check Admin Login via HTTP
-    const adminLoginRes = await fetch(`${BASE_URL}/.netlify/functions/admin-login`, {
+    const adminPassword = process.env.ADMIN_PASSWORD || 'adminpassword';
+    const adminLoginRes = await fetch(`${BASE_URL}/api/admin-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: 'nafijthepro' })
+      body: JSON.stringify({ password: adminPassword })
     });
     const adminLoginData = await adminLoginRes.json();
     check(adminLoginRes.status === 200 && !!adminLoginData.token, 'admin-login endpoint authenticates with token');

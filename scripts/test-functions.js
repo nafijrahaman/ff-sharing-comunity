@@ -37,10 +37,11 @@ async function runTests() {
   });
   assert(badLogin.statusCode === 401, 'Rejects invalid admin password with 401');
 
-  // Test 2: Admin Login (Correct Password: nafijthepro)
+  // Test 2: Admin Login
+  const correctPassword = process.env.ADMIN_PASSWORD || 'adminpassword';
   const goodLogin = await adminLoginHandler({
     httpMethod: 'POST',
-    body: JSON.stringify({ password: 'nafijthepro' })
+    body: JSON.stringify({ password: correctPassword })
   });
   const loginData = JSON.parse(goodLogin.body);
   assert(goodLogin.statusCode === 200 && !!loginData.token, 'Authenticates correct admin password and generates token');

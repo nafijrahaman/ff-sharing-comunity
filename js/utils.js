@@ -193,6 +193,15 @@ function compressImageFile(file, maxWidth = 1200, quality = 0.75) {
   });
 }
 
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('Failed to read file as data URL.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 // 6. Time & Date Formatting
 function formatPublishedTime(isoString) {
   if (!isoString) {
@@ -328,806 +337,70 @@ const DEFAULT_SEED_POSTS = [
   }
 ];
 
-// Helper: Make authenticated request directly to NRDB REST API with safe timeout
-async function directNrdbFetch(endpoint, options = {}) {
-  const config = window.APP_CONFIG || {};
-  const apiKey = config.NRDB_API_KEY || 'nrdb_live_b9719c563644853f6c54e725eb37d13f5b71d4da5c5fe429';
-  const baseUrl = config.NRDB_BASE_URL || 'https://db.nafij.me/api/v1';
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout so live DB requests never get prematurely cancelled
-
-    const res = await fetch(`${baseUrl}${endpoint}`, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        ...(options.headers || {})
-      }
-    });
-
-    const json = await res.json().catch(() => ({}));
-    clearTimeout(timeoutId);
-    
-    return { ok: res.ok, status: res.status, data: json };
-  } catch (e) {
-    console.warn('directNrdbFetch network notice:', e.message);
-    return { ok: false, status: 0, data: null };
-  }
-}
-
-// Client-Side NRDB Router & Data Processing (runs in browser seamlessly on Vercel, Localhost, etc.)
-async function directNrdbApiRouter(endpoint, options = {}) {
-  const [route, queryString] = endpoint.split('?');
-  const params = new URLSearchParams(queryString || '');
-  const method = (options.method || 'GET').toUpperCase();
-
-  try {
-    // 1. GET POSTS (with search, author profile, pagination & user aggregation)
-    if (route === 'get-posts' && method === 'GET') {
-      const page = Math.max(1, parseInt(params.get('page'), 10) || 1);
-      const limit = Math.min(100, Math.max(1, parseInt(params.get('limit'), 10) || 20));
-      const search = (params.get('q') || params.get('search') || '').trim();
-      const username = (params.get('user') || params.get('username') || params.get('author') || '').trim();
-
-      let rawPosts = [];
-      try {
-        const nrdbRes = await directNrdbFetch('/data/posts?limit=200');
-        if (nrdbRes.ok && nrdbRes.data && nrdbRes.data.success) {
-          rawPosts = nrdbRes.data.data || nrdbRes.data.items || [];
-        }
-      } catch (e) {
-        console.warn('Direct NRDB fetch failed, falling back to local cached store:', e.message);
-      }
-
-      // Check local cache
-      let cachedPosts = [];
-      try {
-        const cached = localStorage.getItem('ff_posts_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) cachedPosts = parsed;
-        }
-      } catch (e) {}
-
-      // If network is completely empty, fallback to cached or seeds
-      if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
-        if (cachedPosts.length > 0) {
-          rawPosts = cachedPosts;
-        } else {
-          rawPosts = [...DEFAULT_SEED_POSTS];
-        }
-      }
-
-      // Standardize post objects: supports BOTH doc_ ID posts and legacy numeric ID posts
-      let allPosts = (Array.isArray(rawPosts) ? rawPosts : [])
-        .filter(p => p && (p.postId !== undefined || p.id !== undefined))
-        .map((p, idx) => {
-          const rawId = p.postId !== undefined && p.postId !== null ? p.postId : p.id;
-          const numId = Number(rawId) || (rawPosts.length - idx);
-          return {
-            _docId: p._docId || p._id || (typeof p.id === 'string' ? p.id : `doc_${numId}`),
-            id: numId,
-            username: (p.username || 'Anonymous').trim(),
-            title: (p.title || '').trim(),
-            settings: p.settings || '',
-            image: p.image || '',
-            likes: Number(p.likes) || 0,
-            likedBy: Array.isArray(p.likedBy) ? p.likedBy : [],
-            createdAt: p.createdAt || new Date().toISOString()
-          };
-        });
-
-      // Cache raw posts in localStorage for offline resilience
-      try {
-        localStorage.setItem('ff_posts_cache', JSON.stringify(allPosts));
-      } catch (e) {}
-
-      // Pre-calculate user map across all posts for profile previews & search
-      const userMap = new Map();
-      allPosts.forEach(p => {
-        const uName = (p.username || 'Anonymous').trim();
-        const uKey = uName.toLowerCase();
-        const likes = Number(p.likes) || 0;
-        const createdAt = p.createdAt || new Date().toISOString();
-
-        if (!userMap.has(uKey)) {
-          userMap.set(uKey, {
-            username: uName,
-            postCount: 1,
-            totalLikes: likes,
-            latestPostDate: createdAt
-          });
-        } else {
-          const existing = userMap.get(uKey);
-          existing.postCount += 1;
-          existing.totalLikes += likes;
-          if (new Date(createdAt) > new Date(existing.latestPostDate)) {
-            existing.latestPostDate = createdAt;
-          }
-        }
-      });
-
-      let matchedUsers = [];
-      let userProfile = null;
-
-      // Filter by author/creator if specified
-      if (username) {
-        const targetUser = username.toLowerCase();
-        allPosts = allPosts.filter(p => (p.username || '').toLowerCase() === targetUser);
-
-        if (userMap.has(targetUser)) {
-          userProfile = userMap.get(targetUser);
-        } else {
-          userProfile = {
-            username: username,
-            postCount: allPosts.length,
-            totalLikes: allPosts.reduce((sum, p) => sum + (Number(p.likes) || 0), 0),
-            latestPostDate: allPosts[0]?.createdAt || new Date().toISOString()
-          };
-        }
-      }
-
-      // Filter by search query (keyword matching title, settings, username or #id)
-      if (search) {
-        const term = search.toLowerCase();
-        const tokens = term.split(/\s+/).filter(t => t.length > 0);
-
-        userMap.forEach((userData, uKey) => {
-          if (uKey.includes(term) || tokens.some(tok => uKey.includes(tok))) {
-            matchedUsers.push(userData);
-          }
-        });
-        matchedUsers.sort((a, b) => b.totalLikes - a.totalLikes || b.postCount - a.postCount);
-
-        allPosts = allPosts.filter(p => {
-          const idStr = String(p.id).toLowerCase();
-          const pUser = (p.username || '').toLowerCase();
-          const pTitle = (p.title || '').toLowerCase();
-          const pSettings = (p.settings || '').toLowerCase();
-
-          // If user searches with '#ID' (e.g. #2), strictly match that exact post ID
-          if (term.startsWith('#')) {
-            return `#${idStr}` === term || idStr === term.slice(1);
-          }
-
-          if (idStr === term) return true;
-          if (pUser.includes(term) || pTitle.includes(term) || pSettings.includes(term)) return true;
-          if (tokens.length > 1) {
-            return tokens.every(tok => pUser.includes(tok) || pTitle.includes(tok) || pSettings.includes(tok) || idStr === tok);
-          }
-          return false;
-        });
-      }
-
-      // Sort newest first by date, then by ID
-      allPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || (Number(b.id) || 0) - (Number(a.id) || 0));
-
-      const total = allPosts.length;
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedPosts = allPosts.slice(startIndex, endIndex);
-      const hasMore = endIndex < total;
-
-      const formattedPosts = paginatedPosts.map(p => ({
-        id: Number(p.id),
-        _docId: p._docId,
-        username: p.username || 'Anonymous',
-        title: p.title || '',
-        settings: p.settings || '',
-        image: p.image || '',
-        likes: Number(p.likes) || 0,
-        createdAt: p.createdAt || new Date().toISOString()
-      }));
-
-      return {
-        ok: true,
-        status: 200,
-        data: {
-          success: true,
-          posts: formattedPosts,
-          total,
-          page,
-          limit,
-          hasMore,
-          matchedUsers: matchedUsers.slice(0, 5),
-          userProfile
-        }
-      };
-    }
-
-    // 2. GET SINGLE POST
-    if (route === 'get-post' && method === 'GET') {
-      const postId = Number(params.get('id'));
-      if (!postId) {
-        return { ok: false, status: 400, data: { success: false, message: 'Post ID is required' } };
-      }
-
-      let rawPosts = [];
-      try {
-        const nrdbRes = await directNrdbFetch('/data/posts?limit=200');
-        if (nrdbRes.ok && nrdbRes.data && nrdbRes.data.success) {
-          rawPosts = nrdbRes.data.data || nrdbRes.data.items || [];
-        }
-      } catch (e) {}
-
-      if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
-        const cached = localStorage.getItem('ff_posts_cache');
-        if (cached) {
-          try { rawPosts = JSON.parse(cached); } catch (e) {}
-        }
-      }
-
-      if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
-        rawPosts = [...DEFAULT_SEED_POSTS];
-      }
-
-      const found = (Array.isArray(rawPosts) ? rawPosts : []).find(p => {
-        const rawId = p.postId !== undefined && p.postId !== null ? p.postId : p.id;
-        return Number(rawId) === postId || p.id === String(postId) || p._docId === String(postId);
-      });
-
-      if (!found) {
-        return { ok: false, status: 404, data: { success: false, message: 'Post Not Found' } };
-      }
-
-      const rawId = found.postId !== undefined && found.postId !== null ? found.postId : found.id;
-      const numId = Number(rawId) || postId;
-      return {
-        ok: true,
-        status: 200,
-        data: {
-          success: true,
-          post: {
-            id: numId,
-            _docId: found._docId || found._id || (typeof found.id === 'string' ? found.id : `doc_${numId}`),
-            username: found.username || 'Anonymous',
-            title: found.title || '',
-            settings: found.settings || '',
-            image: found.image || '',
-            likes: Number(found.likes) || 0,
-            createdAt: found.createdAt || new Date().toISOString()
-          }
-        }
-      };
-    }
-
-    // 3. CREATE NEW POST
-    if (route === 'create-post' && method === 'POST') {
-      const payload = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-      const username = (payload.username || '').trim();
-      const title = (payload.title || '').trim();
-      const settings = (payload.settings || '').trim();
-      const image = (payload.image || '').trim();
-
-      if (!username) return { ok: false, status: 400, data: { success: false, message: 'Username is required.' } };
-      if (!settings) return { ok: false, status: 400, data: { success: false, message: 'Settings text is required.' } };
-
-      // Determine next sequential ID from Quick Storage, DB, and local cache
-      let nextId = 1;
-      try {
-        let maxId = 0;
-        // 1. Check quick storage sequence
-        try {
-          const seqRes = await directNrdbFetch('/quick/ff_post_sequence');
-          if (seqRes.ok && seqRes.data) {
-            const seqVal = typeof seqRes.data.data?.value === 'number' ? seqRes.data.data.value : (typeof seqRes.data.value === 'number' ? seqRes.data.value : 0);
-            maxId = Math.max(maxId, seqVal);
-          }
-        } catch (e) {}
-
-        // 2. Cross check with live DB posts
-        try {
-          const nrdbRes = await directNrdbFetch('/data/posts?limit=200');
-          const rawPosts = nrdbRes?.data?.data || nrdbRes?.data?.items || [];
-          if (Array.isArray(rawPosts)) {
-            const dbMax = rawPosts.reduce((m, p) => Math.max(m, Number(p.postId !== undefined && p.postId !== null ? p.postId : p.id) || 0), 0);
-            maxId = Math.max(maxId, dbMax);
-          }
-        } catch (e) {}
-
-        // 3. Cross check with local cache
-        try {
-          const cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
-          if (Array.isArray(cached)) {
-            const localMax = cached.reduce((m, p) => Math.max(m, Number(p.postId !== undefined && p.postId !== null ? p.postId : p.id) || 0), 0);
-            maxId = Math.max(maxId, localMax);
-          }
-        } catch (e) {}
-
-        nextId = maxId + 1;
-      } catch (e) {
-        nextId = Date.now();
-      }
-
-      // Update sequence in Quick Storage
-      try {
-        await directNrdbFetch('/quick/ff_post_sequence', {
-          method: 'PUT',
-          body: JSON.stringify({ value: nextId })
-        });
-      } catch (e) {}
-
-      const newPostDoc = {
-        postId: nextId,
-        username,
-        title,
-        settings,
-        image,
-        likes: 0,
-        likedBy: [],
-        createdAt: new Date().toISOString()
-      };
-
-      // Save directly to NRDB - await the save to guarantee persistence in live database!
-      let savedDocId = `doc_${Date.now()}`;
-      try {
-        const saveRes = await directNrdbFetch('/data/posts', {
-          method: 'POST',
-          body: JSON.stringify(newPostDoc)
-        });
-        if (saveRes.ok && saveRes.data) {
-          savedDocId = saveRes.data.data?.id || saveRes.data.id || savedDocId;
-        }
-      } catch (e) {
-        console.warn('Direct NRDB insert warning:', e.message);
-      }
-
-      // Update local storage cache
-      try {
-        let cached = [];
-        const cachedStr = localStorage.getItem('ff_posts_cache');
-        if (cachedStr) {
-          try { cached = JSON.parse(cachedStr); } catch (e) {}
-        }
-        if (!Array.isArray(cached)) cached = [];
-        cached.unshift({ ...newPostDoc, id: nextId, _docId: savedDocId });
-        localStorage.setItem('ff_posts_cache', JSON.stringify(cached));
-      } catch (e) {}
-
-      return {
-        ok: true,
-        status: 201,
-        data: {
-          success: true,
-          message: 'Settings shared successfully!',
-          post: {
-            id: nextId,
-            _docId: savedDocId,
-            username,
-            title,
-            settings,
-            image,
-            likes: 0,
-            createdAt: newPostDoc.createdAt
-          }
-        }
-      };
-    }
-
-    // 4. LIKE A POST
-    if (route === 'like-post' && method === 'POST') {
-      const payload = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-      const postId = Number(payload.postId);
-      const fingerprint = payload.fingerprint || '';
-
-      if (!postId || !fingerprint) {
-        return { ok: false, status: 400, data: { success: false, message: 'Invalid like request' } };
-      }
-
-      let rawPosts = [];
-      try {
-        const nrdbRes = await directNrdbFetch('/data/posts?limit=200');
-        if (nrdbRes.ok && nrdbRes.data && nrdbRes.data.success) {
-          rawPosts = nrdbRes.data.data || nrdbRes.data.items || [];
-        }
-      } catch (e) {}
-
-      if (!Array.isArray(rawPosts) || rawPosts.length === 0) {
-        const cached = localStorage.getItem('ff_posts_cache');
-        if (cached) {
-          try {
-            rawPosts = JSON.parse(cached);
-          } catch (e) {}
-        }
-      }
-
-      const target = (Array.isArray(rawPosts) ? rawPosts : []).find(p => {
-        const pId = Number(p.postId !== undefined && p.postId !== null ? p.postId : p.id);
-        return pId === postId;
-      });
-
-      if (!target) {
-        return { ok: false, status: 404, data: { success: false, message: 'Post not found' } };
-      }
-
-      const likedBy = Array.isArray(target.likedBy) ? target.likedBy : [];
-      if (likedBy.includes(fingerprint)) {
-        return {
-          ok: true,
-          status: 200,
-          data: {
-            success: true,
-            likes: Number(target.likes) || 0,
-            alreadyLiked: true,
-            message: 'Already liked'
-          }
-        };
-      }
-
-      const newLikes = (Number(target.likes) || 0) + 1;
-      const updatedLikedBy = [...likedBy, fingerprint];
-      target.likes = newLikes;
-      target.likedBy = updatedLikedBy;
-
-      const docId = target._docId || target._id || target.id;
-      if (docId !== undefined && docId !== null) {
-        try {
-          await directNrdbFetch(`/data/posts/${docId}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ likes: newLikes, likedBy: updatedLikedBy })
-          });
-        } catch (e) {
-          console.warn('Direct NRDB like update warning:', e.message);
-        }
-      }
-
-      // Update cache
-      try {
-        const cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
-        if (Array.isArray(cached)) {
-          const item = cached.find(p => Number(p.postId !== undefined && p.postId !== null ? p.postId : p.id) === postId);
-          if (item) {
-            item.likes = newLikes;
-            item.likedBy = updatedLikedBy;
-            localStorage.setItem('ff_posts_cache', JSON.stringify(cached));
-          }
-        }
-      } catch (e) {}
-
-      return {
-        ok: true,
-        status: 200,
-        data: {
-          success: true,
-          likes: newLikes,
-          alreadyLiked: false,
-          message: 'Post liked!'
-        }
-      };
-    }
-
-    // 5. ADMIN LOGIN
-    if (route === 'admin-login' && method === 'POST') {
-      const payload = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-      const correctPassword = window.APP_CONFIG?.ADMIN_PASSWORD || 'nafijthepro';
-
-      if (payload.password === correctPassword) {
-        const token = 'admin_session_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2);
-        return { ok: true, status: 200, data: { success: true, token, message: 'Admin authenticated successfully' } };
-      }
-      return { ok: false, status: 401, data: { success: false, message: 'Invalid admin credentials' } };
-    }
-
-    // 6. ADMIN DELETE SINGLE POST
-    if (route === 'admin-delete-post' && method === 'POST') {
-      const payload = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-      const postId = Number(payload.postId);
-
-      const nrdbRes = await directNrdbFetch('/data/posts?limit=200');
-      const list = nrdbRes?.data?.data || nrdbRes?.data?.items || [];
-      const target = (Array.isArray(list) ? list : []).find(p => Number(p.postId !== undefined && p.postId !== null ? p.postId : p.id) === postId);
-
-      if (target) {
-        const docId = target._docId || target._id || target.id;
-        if (docId !== undefined && docId !== null) {
-          await directNrdbFetch(`/data/posts/${docId}`, { method: 'DELETE' });
-        }
-      }
-
-      // Update local storage cache
-      try {
-        const cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
-        const updated = cached.filter(p => Number(p.postId !== undefined && p.postId !== null ? p.postId : p.id) !== postId);
-        localStorage.setItem('ff_posts_cache', JSON.stringify(updated));
-      } catch (e) {}
-
-      return { ok: true, status: 200, data: { success: true, message: `Post #${postId} deleted successfully` } };
-    }
-
-    // 7. ADMIN DELETE ALL POSTS BY USERNAME
-    if (route === 'admin-delete-user' && method === 'POST') {
-      const payload = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-      const targetUser = (payload.username || '').trim().toLowerCase();
-
-      const nrdbRes = await directNrdbFetch('/data/posts?limit=200');
-      const list = nrdbRes?.data?.data || nrdbRes?.data?.items || [];
-      const userDocs = (Array.isArray(list) ? list : []).filter(p => (p.username || '').trim().toLowerCase() === targetUser);
-
-      let count = 0;
-      for (const doc of userDocs) {
-        const docId = doc._docId || doc._id || doc.id;
-        if (docId !== undefined && docId !== null) {
-          try {
-            await directNrdbFetch(`/data/posts/${docId}`, { method: 'DELETE' });
-            count++;
-          } catch (e) {}
-        }
-      }
-
-      // Update cache
-      try {
-        const cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]');
-        const updated = cached.filter(p => (p.username || '').trim().toLowerCase() !== targetUser);
-        localStorage.setItem('ff_posts_cache', JSON.stringify(updated));
-      } catch (e) {}
-
-      return { ok: true, status: 200, data: { success: true, deletedCount: count, message: `Deleted ${count} posts and user @${targetUser}` } };
-    }
-
-    // 8. ADMIN DELETE ALL POSTS & COMPLETE DATABASE PURGE
-    if (route === 'admin-delete-all' && method === 'POST') {
-      const nrdbRes = await directNrdbFetch('/data/posts?limit=200');
-      const list = nrdbRes?.data?.data || nrdbRes?.data?.items || [];
-
-      let count = 0;
-      for (const doc of (Array.isArray(list) ? list : [])) {
-        const docId = doc._docId || doc._id || doc.id;
-        if (docId !== undefined && docId !== null) {
-          try {
-            await directNrdbFetch(`/data/posts/${docId}`, { method: 'DELETE' });
-            count++;
-          } catch (e) {}
-        }
-      }
-
-      // Reset Quick Storage sequence counter to 0 so next created post starts at #1
-      try {
-        await directNrdbFetch('/quick/ff_post_sequence', {
-          method: 'PUT',
-          body: JSON.stringify({ value: 0 })
-        });
-      } catch (e) {}
-
-      // Clear local storage cache
-      try {
-        localStorage.removeItem('ff_posts_cache');
-      } catch (e) {}
-
-      return { ok: true, status: 200, data: { success: true, deletedCount: count, message: 'All community posts & users purged. Database reset to new!' } };
-    }
-
-    return { ok: false, status: 404, data: { success: false, message: 'Endpoint not found' } };
-  } catch (err) {
-    console.error('Direct NRDB Router Error:', err);
-    return {
-      ok: false,
-      status: 0,
-      data: { success: false, message: err.message || 'Network error. Please check your connection.' }
-    };
-  }
-}
-
-// 8. Universal Resilient API Caller
-// Priority:
-//   1. Netlify functions (netlify.app or port 8888)
-//   2. Vercel /api/ functions (vercel.app, custom domain, or any server with /api/)
-//   3. Direct NRDB client-side fallback (localStorage cache + seed posts)
-//
-// KEY FIX: Previously the fallback took 20s to timeout on db.nafij.me.
-// Now /api/ is always tried first; directNrdbApiRouter is a fast in-memory fallback.
+// 8. Universal API Caller — Communicates directly with MongoDB-backed APIs
 async function apiCall(endpoint, options = {}) {
   const host = window.location.hostname;
   const port = window.location.port;
   const [routeName, queryString] = endpoint.split('?');
   const qsPart = queryString ? '?' + queryString : '';
 
-  // ── 1. Netlify functions ──────────────────────────────────────────────────
+  // Determine path: Netlify functions if on netlify.app, otherwise canonical /api/
   const isNetlify = host.endsWith('netlify.app') || port === '8888';
-  if (isNetlify) {
-    try {
-      const url = `/.netlify/functions/${endpoint}`;
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 10000);
-      const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-        signal: ctrl.signal,
-        ...options
-      });
-      clearTimeout(tid);
-      if (res.status !== 404 && res.status !== 502) {
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          return { ok: res.ok, status: res.status, data: await res.json() };
-        }
-      }
-    } catch (err) {
-      console.warn('[api] Netlify function failed:', err.message);
+  const url = isNetlify
+    ? `/.netlify/functions/${routeName}${qsPart}`
+    : `/api/${routeName}${qsPart}`;
+
+  const headers = {
+    'Accept': 'application/json',
+    ...(options.headers || {})
+  };
+
+  // Set Content-Type only when appropriate
+  if (!(options.body instanceof FormData) && typeof options.body === 'string') {
+    if (!headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
     }
   }
 
-  // ── 2. Vercel /api/ (or any server — localhost, custom domain, vercel.app) ─
-  // Skip only for file:// protocol (local HTML files without a server)
-  const isFileProtocol = window.location.protocol === 'file:';
-  if (!isNetlify && !isFileProtocol) {
-    const apiUrl = `/api/${routeName}${qsPart}`;
-    try {
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 10000);
-      const res = await fetch(apiUrl, {
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-        signal: ctrl.signal,
-        ...options
-      });
-      clearTimeout(tid);
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('application/json')) {
-        const data = await res.json();
-        if (res.ok || data.success === false) {
-          // Return even error responses so caller can handle them
-          return { ok: res.ok, status: res.status, data };
-        }
-      }
+    const res = await fetch(url, {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal
+    });
+    clearTimeout(timeoutId);
 
-      // 404/502 means /api/ route not deployed — fall through
-      if (res.status === 404 || res.status === 502) {
-        console.warn('[api] /api/' + routeName + ' not found (' + res.status + '), falling back to direct client');
-      }
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        console.warn('[api] /api/' + routeName + ' timed out after 10s, using local fallback');
-      } else {
-        console.warn('[api] /api/' + routeName + ' network error:', err.message);
-      }
+    const contentType = res.headers.get('content-type') || '';
+    let data = {};
+    if (contentType.includes('application/json')) {
+      data = await res.json().catch(() => ({}));
+    } else {
+      const text = await res.text().catch(() => '');
+      data = { success: res.ok, message: text };
     }
-  }
-
-  // ── 3. Direct client-side fallback (localStorage cache + seed data) ────────
-  // Fast: runs entirely in-browser. No network call to old NRDB.
-  // For get-posts: returns cached posts or seed posts immediately.
-  console.debug('[api] using directNrdbApiRouter fallback for:', routeName);
-  return await directNrdbFastFallback(endpoint, options);
-}
-
-// Fast in-browser fallback — uses localStorage cache, avoids slow network calls
-async function directNrdbFastFallback(endpoint, options = {}) {
-  const [route, queryString] = endpoint.split('?');
-  const params = new URLSearchParams(queryString || '');
-  const method = (options.method || 'GET').toUpperCase();
-
-  // GET POSTS — return from localStorage or seed posts (instant, no network)
-  if (route === 'get-posts' && method === 'GET') {
-    const page = Math.max(1, parseInt(params.get('page'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(params.get('limit'), 10) || 20));
-    const search = (params.get('q') || params.get('search') || '').trim();
-    const username = (params.get('user') || params.get('username') || '').trim();
-
-    let allPosts = [];
-    try {
-      const cached = localStorage.getItem('ff_posts_cache');
-      if (cached) allPosts = JSON.parse(cached) || [];
-    } catch (_) {}
-
-    if (!Array.isArray(allPosts) || allPosts.length === 0) {
-      allPosts = DEFAULT_SEED_POSTS.map((p, i) => ({ ...p, id: p.id || (i + 1) }));
-    }
-
-    if (username) allPosts = allPosts.filter(p => (p.username || '').toLowerCase() === username.toLowerCase());
-    if (search) {
-      const term = search.toLowerCase();
-      if (term.startsWith('#')) {
-        const id = parseInt(term.slice(1), 10);
-        if (!isNaN(id)) allPosts = allPosts.filter(p => Number(p.id) === id || Number(p.postId) === id);
-      } else {
-        allPosts = allPosts.filter(p =>
-          (p.username || '').toLowerCase().includes(term) ||
-          (p.title || '').toLowerCase().includes(term) ||
-          (p.settings || '').toLowerCase().includes(term)
-        );
-      }
-    }
-
-    allPosts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0) || (Number(b.id) - Number(a.id)));
-
-    const total = allPosts.length;
-    const startIdx = (page - 1) * limit;
-    const paginated = allPosts.slice(startIdx, startIdx + limit);
 
     return {
-      ok: true, status: 200,
+      ok: res.ok,
+      status: res.status,
+      data
+    };
+  } catch (err) {
+    console.error(`[apiCall] Network error on ${url}:`, err.message);
+    return {
+      ok: false,
+      status: 0,
       data: {
-        success: true,
-        posts: paginated.map(p => ({
-          id: Number(p.postId || p.id), _docId: p._docId || String(p.id),
-          username: p.username || 'Anonymous', title: p.title || '',
-          settings: p.settings || '', image: p.image || '',
-          likes: Number(p.likes) || 0, createdAt: p.createdAt || new Date().toISOString()
-        })),
-        total, page, limit, hasMore: (startIdx + limit) < total,
-        matchedUsers: [], userProfile: null
+        success: false,
+        message: err.name === 'AbortError'
+          ? 'Request timed out. Please check your connection and retry.'
+          : 'Network connection error. Please verify your connection.',
+        error: { code: 'NETWORK_ERROR', message: err.message }
       }
     };
   }
-
-  // CREATE POST — save to localStorage only (fallback mode)
-  if (route === 'create-post' && method === 'POST') {
-    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-    const username = (body.username || '').trim();
-    const settings = (body.settings || '').trim();
-    if (!username) return { ok: false, status: 400, data: { success: false, message: 'Username required' } };
-    if (!settings) return { ok: false, status: 400, data: { success: false, message: 'Settings required' } };
-
-    let cached = [];
-    try { cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]'); } catch (_) {}
-    const maxId = cached.reduce((m, p) => Math.max(m, Number(p.postId || p.id) || 0), 0);
-    const nextId = maxId + 1;
-    const newPost = {
-      postId: nextId, id: nextId, username, title: body.title || '',
-      settings, image: body.image || '', likes: 0, likedBy: [],
-      createdAt: new Date().toISOString(), _docId: `local_${Date.now()}`
-    };
-    cached.unshift(newPost);
-    try { localStorage.setItem('ff_posts_cache', JSON.stringify(cached)); } catch (_) {}
-
-    return { ok: true, status: 201, data: { success: true, message: 'Settings shared (offline mode)!', post: newPost } };
-  }
-
-  // LIKE POST — update localStorage only
-  if (route === 'like-post' && method === 'POST') {
-    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-    const postId = Number(body.postId);
-    let cached = [];
-    try { cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]'); } catch (_) {}
-    const target = cached.find(p => Number(p.postId || p.id) === postId);
-    if (target) {
-      target.likes = (Number(target.likes) || 0) + 1;
-      try { localStorage.setItem('ff_posts_cache', JSON.stringify(cached)); } catch (_) {}
-      return { ok: true, status: 200, data: { success: true, likes: target.likes, alreadyLiked: false } };
-    }
-    return { ok: false, status: 404, data: { success: false, message: 'Post not found' } };
-  }
-
-  // ADMIN LOGIN
-  if (route === 'admin-login' && method === 'POST') {
-    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-    const pw = window.APP_CONFIG?.ADMIN_PASSWORD || 'nafijthepro';
-    if (body.password === pw) {
-      return { ok: true, status: 200, data: { success: true, token: 'admin_' + Date.now(), message: 'Authenticated' } };
-    }
-    return { ok: false, status: 401, data: { success: false, message: 'Invalid credentials' } };
-  }
-
-  // ADMIN DELETE ops — local cache only
-  if (route === 'admin-delete-post' && method === 'POST') {
-    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-    const postId = Number(body.postId);
-    let cached = [];
-    try { cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]'); } catch (_) {}
-    const updated = cached.filter(p => Number(p.postId || p.id) !== postId);
-    try { localStorage.setItem('ff_posts_cache', JSON.stringify(updated)); } catch (_) {}
-    return { ok: true, status: 200, data: { success: true, message: `Post #${postId} removed from local cache` } };
-  }
-
-  if (route === 'admin-delete-user' && method === 'POST') {
-    const body = typeof options.body === 'string' ? JSON.parse(options.body || '{}') : (options.body || {});
-    const targetUser = (body.username || '').toLowerCase();
-    let cached = [];
-    try { cached = JSON.parse(localStorage.getItem('ff_posts_cache') || '[]'); } catch (_) {}
-    const updated = cached.filter(p => (p.username || '').toLowerCase() !== targetUser);
-    const count = cached.length - updated.length;
-    try { localStorage.setItem('ff_posts_cache', JSON.stringify(updated)); } catch (_) {}
-    return { ok: true, status: 200, data: { success: true, deletedCount: count, message: `Removed ${count} local posts` } };
-  }
-
-  if (route === 'admin-delete-all' && method === 'POST') {
-    try { localStorage.removeItem('ff_posts_cache'); } catch (_) {}
-    return { ok: true, status: 200, data: { success: true, message: 'Local cache cleared' } };
-  }
-
-  return { ok: false, status: 404, data: { success: false, message: 'Endpoint not found in fallback' } };
 }
 
 // 9. Check Online / Offline status

@@ -1,4 +1,4 @@
-const { likePostById, jsonResponse } = require('./_nrdb');
+const { likeMongoPostById, jsonResponse } = require('./_mongo');
 
 exports.handler = async (event, context) => {
   if (event.httpMethod === 'OPTIONS') {
@@ -17,7 +17,7 @@ exports.handler = async (event, context) => {
       return jsonResponse(400, { success: false, message: 'Invalid JSON body' });
     }
 
-    const postId = body.postId;
+    const postId = body.postId ?? body.id;
     const fingerprint = (body.fingerprint || '').trim();
 
     if (!postId) {
@@ -28,10 +28,10 @@ exports.handler = async (event, context) => {
       return jsonResponse(400, { success: false, message: 'Client fingerprint is required' });
     }
 
-    const result = await likePostById(postId, fingerprint);
+    const result = await likeMongoPostById(postId, fingerprint);
 
-    if (!result.success && result.message === 'Post not found') {
-      return jsonResponse(404, { success: false, message: 'Post not found' });
+    if (!result) {
+      return jsonResponse(500, { success: false, message: 'Failed to update like status' });
     }
 
     return jsonResponse(200, {

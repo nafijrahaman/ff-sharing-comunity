@@ -148,6 +148,8 @@
 
           <div id="imagePreviewContainer" class="image-preview-container">
             <img id="imagePreview" class="image-preview-img" alt="Uploaded Settings Preview" />
+            <div id="imageUploadStatusBadge" class="image-upload-badge" style="display:none;"></div>
+            <button type="button" id="btnRetryUpload" class="btn-retry-upload" style="display:none;" title="Retry Upload">🔄 Retry Upload</button>
             <button type="button" id="btnRemoveImage" class="btn-remove-img" aria-label="Remove Image">✕</button>
           </div>
         </div>
@@ -263,7 +265,7 @@
         <a href="admin.html">Admin</a>
       </div>
       <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
-        Database powered by <a href="https://db.nafij.me" target="_blank" rel="noopener" style="color:var(--accent-ice); text-decoration:underline;">NafijRahaman DB</a>
+        High-performance community database powered by MongoDB
       </p>
     </div>
   </footer>

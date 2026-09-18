@@ -1,4 +1,4 @@
-const { deleteAllPosts, jsonResponse } = require('./_nrdb');
+const { deleteMongoAllPosts, jsonResponse } = require('./_mongo');
 const { verifyAdminToken } = require('./admin-login');
 
 exports.handler = async (event, context) => {
@@ -26,7 +26,6 @@ exports.handler = async (event, context) => {
       body = {};
     }
 
-    // Require explicit confirmation flag in body
     if (body.confirm !== true && body.confirm !== 'CONFIRM_DELETE_ALL') {
       return jsonResponse(400, {
         success: false,
@@ -34,7 +33,7 @@ exports.handler = async (event, context) => {
       });
     }
 
-    const count = await deleteAllPosts();
+    const count = await deleteMongoAllPosts();
 
     return jsonResponse(200, {
       success: true,
